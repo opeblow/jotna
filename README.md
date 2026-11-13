@@ -30,6 +30,7 @@ Jotna is a buyer-seller escrow flow for informal commerce. It turns cash-on-deli
 - [Repository structure](#repository-structure)
 - [Local development](#local-development)
 - [Validation](#validation)
+- [Production deployment](#production-deployment)
 - [Security and compliance](#security-and-compliance)
 - [Contributing](#contributing)
 - [License](#license)
@@ -146,6 +147,7 @@ jotna/
 │       ├── package.json
 │       └── tsconfig.json
 ├── docs/
+│   ├── deployment.md
 │   └── images/
 │       ├── hero.svg
 │       ├── start.svg
@@ -191,6 +193,10 @@ For the full local Lightning lifecycle test, start `npm run dev:stack` and `npm 
 ```bash
 npm run test:e2e
 ```
+
+## Production deployment
+
+See [docs/deployment.md](docs/deployment.md) for production configuration, HTTPS, health checks, and worker scaling guidance.
 
 ## Security and compliance
 

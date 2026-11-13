@@ -1,0 +1,8 @@
+import type { ReactNode } from "react";
+import { AppShell } from "@/components/AppShell";
+
+export const metadata = { title: "Ma boutique", robots: { index: false } };
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  return <AppShell>{children}</AppShell>;
+}

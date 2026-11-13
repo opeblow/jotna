@@ -1,5 +1,9 @@
 # Jotna
 
+<p align="center">
+  <img src="apps/web/public/icon.svg" alt="Jotna logo" width="80" height="80">
+</p>
+
 [![CI](https://github.com/jotna/jotna/actions/workflows/ci.yml/badge.svg)](https://github.com/jotna/jotna/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-22.x-339933?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -7,6 +11,29 @@
 [![Lightning](https://img.shields.io/badge/Lightning-LND%20%2B%20Hold%20Invoices-7a5cff)](https://lightning.engineering)
 
 Jotna is a buyer-seller escrow flow for informal commerce. It turns cash-on-delivery into a trust-preserving Lightning payment flow where the buyer locks funds before the rider leaves and only releases them after verifying the parcel at the door.
+
+## Table of contents
+
+- [Overview](#overview)
+- [Why it matters](#why-it-matters)
+- [Product flow](#product-flow)
+- [Core architecture](#core-architecture)
+- [Stack](#stack)
+- [Page gallery](#page-gallery)
+  - [Hero](#hero)
+  - [Create shop](#create-shop)
+  - [Login](#login)
+  - [Dashboard](#dashboard)
+  - [Wallet connection](#wallet-connection)
+  - [Create order](#create-order)
+  - [Order view](#order-view)
+- [Repository structure](#repository-structure)
+- [Local development](#local-development)
+- [Validation](#validation)
+- [Security and compliance](#security-and-compliance)
+- [Contributing](#contributing)
+- [License](#license)
+- [Roadmap](#roadmap)
 
 ## Overview
 

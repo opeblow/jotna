@@ -1,0 +1,68 @@
+<svg width="1440" height="900" viewBox="0 0 1440 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="900" fill="#F6F7F3"/>
+  <rect x="80" y="24" width="38" height="38" rx="13" fill="#D7AD61"/>
+  <path d="M92 54V39C92 35.686 94.686 33 98 33C101.314 33 104 35.686 104 39V54H92Z" fill="#183E2D"/>
+  <text x="132" y="53" fill="#18241F" font-family="Georgia,serif" font-size="29" font-weight="700">Jotna</text>
+  <text x="500" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="15">How it works</text>
+  <text x="640" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Security</text>
+  <text x="742" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Questions</text>
+  <text x="1092" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="14">Français</text>
+  <text x="1180" y="49" fill="#18241F" font-family="Arial,sans-serif" font-size="14" font-weight="700">Sign in</text>
+  <rect x="1255" y="18" width="152" height="46" rx="23" fill="#183E2D"/>
+  <text x="1275" y="47" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" font-weight="700">Open my shop</text>
+
+  <rect x="80" y="104" width="1280" height="732" rx="34" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <rect x="122" y="154" width="322" height="38" rx="19" fill="#F5F0E2"/>
+  <circle cx="144" cy="173" r="5" fill="#A65C3E"/>
+  <text x="161" y="178" fill="#18241F" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.25">PAY ON DELIVERY, WITHOUT CASH</text>
+  <text x="122" y="298" fill="#18241F" font-family="Georgia,serif" font-size="64" font-weight="700">Paid at the door.</text>
+  <text x="122" y="368" fill="#A65C3E" font-family="Georgia,serif" font-size="56" font-style="italic" font-weight="700">Not before. Not in cash.</text>
+  <text x="122" y="430" fill="#59665F" font-family="Arial,sans-serif" font-size="18">Your customer locks the payment before the rider sets off.</text>
+  <text x="122" y="461" fill="#59665F" font-family="Arial,sans-serif" font-size="18">One scan at delivery releases it to you. If the parcel never</text>
+  <text x="122" y="492" fill="#59665F" font-family="Arial,sans-serif" font-size="18">arrives, the money goes back on its own.</text>
+  <rect x="122" y="536" width="198" height="56" rx="28" fill="#183E2D"/>
+  <text x="149" y="571" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="15" font-weight="700">Open my shop  →</text>
+  <text x="346" y="571" fill="#18241F" font-family="Arial,sans-serif" font-size="15" font-weight="700">See how it works</text>
+  <rect x="122" y="624" width="132" height="36" rx="18" fill="#F0F2ED"/>
+  <text x="140" y="647" fill="#59665F" font-family="Arial,sans-serif" font-size="12" font-weight="700">No pooled funds</text>
+  <rect x="264" y="624" width="120" height="36" rx="18" fill="#EAF2ED"/>
+  <text x="283" y="647" fill="#285742" font-family="Arial,sans-serif" font-size="12" font-weight="700">Buyer release</text>
+  <rect x="394" y="624" width="144" height="36" rx="18" fill="#E8F2EB"/>
+  <text x="411" y="647" fill="#327252" font-family="Arial,sans-serif" font-size="12" font-weight="700">Refund by default</text>
+  <text x="122" y="744" fill="#87928B" font-family="Arial,sans-serif" font-size="13">Built for WhatsApp sellers and local delivery.</text>
+
+  <rect x="782" y="146" width="526" height="610" rx="32" fill="#EAF2ED"/>
+  <circle cx="1288" cy="198" r="185" stroke="#285742" stroke-opacity=".1"/>
+  <circle cx="810" cy="740" r="138" fill="#F5F0E2" fill-opacity=".85"/>
+  <rect x="1008" y="166" width="250" height="68" rx="20" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="1032" y="193" fill="#87928B" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1.2">LIVE ORDER</text>
+  <text x="1032" y="218" fill="#18241F" font-family="Arial,sans-serif" font-size="14" font-weight="700">Atelier Ndeye · 35 000 F</text>
+  <rect x="858" y="254" width="344" height="414" rx="26" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <rect x="884" y="280" width="34" height="34" rx="11" fill="#D7AD61"/>
+  <path d="M895 308V293C895 289.686 897.686 287 901 287C904.314 287 907 289.686 907 293V308H895Z" fill="#183E2D"/>
+  <text x="930" y="297" fill="#18241F" font-family="Arial,sans-serif" font-size="14" font-weight="700">Atelier Ndeye</text>
+  <text x="1156" y="297" fill="#87928B" font-family="Arial,sans-serif" font-size="10" font-weight="700">JOTNA</text>
+  <text x="884" y="366" fill="#18241F" font-family="Georgia,serif" font-size="24" font-weight="700">Embroidered bazin boubou</text>
+  <text x="884" y="394" fill="#59665F" font-family="Arial,sans-serif" font-size="14">Indigo blue, size L</text>
+  <path d="M884 418H1176" stroke="#E4E8E1" stroke-dasharray="4 5"/>
+  <text x="884" y="454" fill="#59665F" font-family="Arial,sans-serif" font-size="13">Item</text>
+  <text x="1176" y="454" fill="#18241F" font-family="Arial,sans-serif" font-size="13" text-anchor="end">35 000 F</text>
+  <text x="884" y="484" fill="#59665F" font-family="Arial,sans-serif" font-size="13">Delivery</text>
+  <text x="1176" y="484" fill="#18241F" font-family="Arial,sans-serif" font-size="13" text-anchor="end">2 000 F</text>
+  <path d="M884 507H1176" stroke="#E4E8E1" stroke-dasharray="4 5"/>
+  <text x="884" y="550" fill="#59665F" font-family="Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="1">TOTAL</text>
+  <text x="1176" y="554" fill="#18241F" font-family="Georgia,serif" font-size="25" font-weight="700" text-anchor="end">37 000 F</text>
+  <rect x="884" y="582" width="292" height="58" rx="16" fill="#183E2D"/>
+  <circle cx="908" cy="611" r="6" fill="#86C49A"/>
+  <text x="926" y="616" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="13" font-weight="700">Funds locked until delivery</text>
+  <rect x="1190" y="432" width="98" height="116" rx="17" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <rect x="1203" y="444" width="72" height="72" rx="4" fill="#FFFFFF"/>
+  <g fill="#183E2D">
+    <path d="M1207 448H1227V468H1207zM1213 454V462H1221V454zM1251 448H1271V468H1251zM1257 454V462H1265V454zM1207 492H1227V512H1207zM1213 498V506H1221V498z"/>
+    <path d="M1233 448H1239V454H1233zM1241 462H1247V468H1241zM1231 476H1237V482H1231zM1249 480H1255V486H1249zM1235 492H1241V498H1235zM1261 492H1267V498H1261z"/>
+  </g>
+  <text x="1202" y="536" fill="#59665F" font-family="Arial,sans-serif" font-size="7" font-weight="700" letter-spacing=".5">CUSTOMER CODE</text>
+  <rect x="1045" y="700" width="216" height="38" rx="19" fill="#FFFFFF"/>
+  <circle cx="1065" cy="719" r="5" fill="#327252"/>
+  <text x="1078" y="724" fill="#285742" font-family="Arial,sans-serif" font-size="12" font-weight="700">Rider on the way</text>
+</svg>

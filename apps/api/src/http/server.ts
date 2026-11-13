@@ -1,7 +1,7 @@
 import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { LogController, type FastifyInstance, type FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import type { AppContext } from "../context.js";
 import { sellerForSession, type SellerRow } from "../domain/auth.js";
@@ -27,7 +27,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     trustProxy: ctx.config.TRUST_PROXY,
     bodyLimit: 64 * 1024,
     // Query strings are not logged: order links are capabilities and must not end up in log files.
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
   });
 
   app.decorate("ctx", ctx);

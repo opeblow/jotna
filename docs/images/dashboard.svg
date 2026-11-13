@@ -1,0 +1,64 @@
+<svg width="1440" height="960" viewBox="0 0 1440 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="960" fill="#F6F7F3"/>
+  <rect width="1440" height="88" fill="#FFFFFF"/>
+  <path d="M0 87.5H1440" stroke="#E4E8E1"/>
+  <rect x="78" y="27" width="34" height="34" rx="11" fill="#D7AD61"/>
+  <path d="M90 55V40C90 36.686 92.686 34 96 34C99.314 34 102 36.686 102 40V55H90Z" fill="#183E2D"/>
+  <text x="124" y="53" fill="#18241F" font-family="Georgia,serif" font-size="29" font-weight="700">Jotna</text>
+  <rect x="282" y="25" width="112" height="38" rx="19" fill="#EAF2ED"/>
+  <text x="306" y="49" fill="#285742" font-family="Arial,sans-serif" font-size="15" font-weight="700">Orders</text>
+  <text x="421" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Wallet</text>
+  <text x="505" y="49" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Shop</text>
+  <rect x="1151" y="22" width="188" height="44" rx="22" fill="#183E2D"/>
+  <text x="1184" y="50" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="15" font-weight="700">+  New order</text>
+
+  <rect x="80" y="126" width="1280" height="222" rx="30" fill="#183E2D"/>
+  <circle cx="1285" cy="111" r="176" stroke="#FFFFFF" stroke-opacity=".12" stroke-width="1.5"/>
+  <circle cx="1285" cy="111" r="145" stroke="#FFFFFF" stroke-opacity=".12" stroke-width="1.5"/>
+  <text x="122" y="178" fill="#D9E7DE" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="2">ATELIER NDEYE</text>
+  <text x="122" y="232" fill="#FFFFFF" font-family="Georgia,serif" font-size="46" font-weight="700">Orders</text>
+  <text x="122" y="270" fill="#FFFFFF" fill-opacity=".72" font-family="Arial,sans-serif" font-size="16">Your shop, at a glance.</text>
+  <path d="M780 164V310" stroke="#FFFFFF" stroke-opacity=".22"/>
+  <text x="820" y="194" fill="#FFFFFF" fill-opacity=".68" font-family="Arial,sans-serif" font-size="15">Funds locked</text>
+  <text x="820" y="247" fill="#FFFFFF" font-family="Georgia,serif" font-size="42" font-weight="700">37 000 F</text>
+  <rect x="1124" y="218" width="188" height="52" rx="26" fill="#FFFFFF"/>
+  <text x="1155" y="250" fill="#183E2D" font-family="Arial,sans-serif" font-size="15" font-weight="700">+  New order</text>
+
+  <rect x="80" y="376" width="302" height="138" rx="22" fill="#EAF2ED" stroke="#E4E8E1"/>
+  <rect x="398" y="376" width="302" height="138" rx="22" fill="#E8F2EB" stroke="#E4E8E1"/>
+  <rect x="716" y="376" width="302" height="138" rx="22" fill="#F5F0E2" stroke="#E4E8E1"/>
+  <rect x="1034" y="376" width="326" height="138" rx="22" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="108" y="417" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Funds locked</text>
+  <text x="108" y="469" fill="#18241F" font-family="Georgia,serif" font-size="33" font-weight="700">37 000 F</text>
+  <text x="426" y="417" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Delivered this week</text>
+  <text x="426" y="469" fill="#18241F" font-family="Georgia,serif" font-size="33" font-weight="700">128 000 F</text>
+  <text x="744" y="417" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Waiting for customer</text>
+  <text x="744" y="469" fill="#18241F" font-family="Georgia,serif" font-size="33" font-weight="700">2</text>
+  <text x="1062" y="417" fill="#59665F" font-family="Arial,sans-serif" font-size="15">Deliveries in total</text>
+  <text x="1062" y="469" fill="#18241F" font-family="Georgia,serif" font-size="33" font-weight="700">46</text>
+
+  <text x="82" y="574" fill="#18241F" font-family="Georgia,serif" font-size="30" font-weight="700">Recent orders</text>
+  <rect x="80" y="600" width="1280" height="290" rx="24" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <path d="M80 672H1360M80 744H1360M80 816H1360" stroke="#E4E8E1"/>
+  <text x="112" y="645" fill="#87928B" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.4">ORDER</text>
+  <text x="836" y="645" fill="#87928B" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.4">STATUS</text>
+  <text x="1193" y="645" fill="#87928B" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.4">TOTAL</text>
+  <text x="112" y="717" fill="#18241F" font-family="Arial,sans-serif" font-size="16" font-weight="700">Embroidered bazin boubou</text>
+  <text x="112" y="739" fill="#87928B" font-family="Arial,sans-serif" font-size="13">For Awa · Today</text>
+  <rect x="832" y="692" width="138" height="30" rx="15" fill="#EAF2ED"/>
+  <circle cx="849" cy="707" r="4" fill="#285742"/>
+  <text x="860" y="712" fill="#285742" font-family="Arial,sans-serif" font-size="12" font-weight="700">Funds locked</text>
+  <text x="1192" y="715" fill="#18241F" font-family="Georgia,serif" font-size="20" font-weight="700">37 000 F</text>
+  <text x="112" y="789" fill="#18241F" font-family="Arial,sans-serif" font-size="16" font-weight="700">Indigo wax-print set</text>
+  <text x="112" y="811" fill="#87928B" font-family="Arial,sans-serif" font-size="13">For Mariama · Yesterday</text>
+  <rect x="832" y="764" width="112" height="30" rx="15" fill="#E8F2EB"/>
+  <circle cx="849" cy="779" r="4" fill="#327252"/>
+  <text x="860" y="784" fill="#327252" font-family="Arial,sans-serif" font-size="12" font-weight="700">Completed</text>
+  <text x="1192" y="787" fill="#18241F" font-family="Georgia,serif" font-size="20" font-weight="700">24 000 F</text>
+  <text x="112" y="861" fill="#18241F" font-family="Arial,sans-serif" font-size="16" font-weight="700">Leather sandals</text>
+  <text x="112" y="883" fill="#87928B" font-family="Arial,sans-serif" font-size="13">For Ibrahima · 2 days ago</text>
+  <rect x="832" y="836" width="152" height="30" rx="15" fill="#F5F0E2"/>
+  <circle cx="849" cy="851" r="4" fill="#A65C3E"/>
+  <text x="860" y="856" fill="#84442E" font-family="Arial,sans-serif" font-size="12" font-weight="700">Awaiting payment</text>
+  <text x="1192" y="859" fill="#18241F" font-family="Georgia,serif" font-size="20" font-weight="700">18 500 F</text>
+</svg>

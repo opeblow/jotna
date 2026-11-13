@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next-playwright/
+dist/
+.env
+.env.*
+!.env.example
+.tools/
+.data/
+*.log
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+apps/web/2026-11-13-071705-pastedcontent-idbdbd.txt

@@ -1,0 +1,46 @@
+<svg width="1440" height="960" viewBox="0 0 1440 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="960" fill="#F6F7F3"/>
+  <rect x="0" y="0" width="720" height="960" fill="#F6F7F3"/>
+  <rect x="720" y="0" width="720" height="960" fill="#EAF2ED"/>
+  <circle cx="1300" cy="110" r="330" stroke="#285742" stroke-opacity=".08"/>
+  <circle cx="820" cy="910" r="260" stroke="#285742" stroke-opacity=".08"/>
+  <rect x="78" y="38" width="36" height="36" rx="12" fill="#D7AD61"/>
+  <path d="M90 68V53C90 49.686 92.686 47 96 47C99.314 47 102 49.686 102 53V68H90Z" fill="#183E2D"/>
+  <text x="128" y="66" fill="#18241F" font-family="Georgia,serif" font-size="29" font-weight="700">Jotna</text>
+  <text x="590" y="63" fill="#59665F" font-family="Arial,sans-serif" font-size="13">Français</text>
+  <text x="112" y="270" fill="#18241F" font-family="Georgia,serif" font-size="52" font-weight="700">Welcome back</text>
+  <text x="112" y="309" fill="#59665F" font-family="Arial,sans-serif" font-size="17">Enter your number and your secret code.</text>
+  <rect x="112" y="358" width="496" height="310" rx="28" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="146" y="408" fill="#18241F" font-family="Arial,sans-serif" font-size="14" font-weight="700">Phone number</text>
+  <rect x="146" y="426" width="428" height="58" rx="14" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="166" y="462" fill="#59665F" font-family="Arial,sans-serif" font-size="15">+221</text>
+  <text x="224" y="462" fill="#18241F" font-family="Arial,sans-serif" font-size="15" font-weight="700">77 123 45 67</text>
+  <text x="146" y="527" fill="#18241F" font-family="Arial,sans-serif" font-size="14" font-weight="700">6-digit secret code</text>
+  <rect x="146" y="545" width="428" height="58" rx="14" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="360" y="582" fill="#87928B" font-family="Arial,sans-serif" font-size="18" letter-spacing="7" text-anchor="middle">••••••</text>
+  <rect x="146" y="622" width="428" height="52" rx="26" fill="#183E2D"/>
+  <text x="360" y="655" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="15" font-weight="700" text-anchor="middle">Sign in</text>
+  <text x="360" y="713" fill="#59665F" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">No shop yet?  Open my shop</text>
+
+  <rect x="836" y="186" width="484" height="72" rx="21" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="864" y="216" fill="#87928B" font-family="Arial,sans-serif" font-size="11" font-weight="700" letter-spacing="1.2">ATELIER NDEYE</text>
+  <text x="864" y="239" fill="#18241F" font-family="Georgia,serif" font-size="20" font-weight="700">Embroidered bazin boubou</text>
+  <rect x="836" y="285" width="484" height="202" rx="28" fill="#183E2D"/>
+  <circle cx="1288" cy="276" r="104" stroke="#FFFFFF" stroke-opacity=".12"/>
+  <text x="870" y="332" fill="#FFFFFF" fill-opacity=".68" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.5">PAYMENT PROTECTED</text>
+  <text x="870" y="389" fill="#FFFFFF" font-family="Georgia,serif" font-size="38" font-weight="700">37 000 F</text>
+  <path d="M870 414H1284" stroke="#FFFFFF" stroke-opacity=".2"/>
+  <circle cx="881" cy="450" r="6" fill="#86C49A"/>
+  <text x="898" y="455" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="13">Locked until the customer receives the parcel</text>
+  <rect x="836" y="523" width="484" height="246" rx="28" fill="#FFFFFF" stroke="#E4E8E1"/>
+  <text x="870" y="570" fill="#18241F" font-family="Georgia,serif" font-size="27" font-weight="700">What you get</text>
+  <circle cx="881" cy="616" r="12" fill="#E8F2EB"/>
+  <path d="M876 616L880 620L887 612" stroke="#327252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="906" y="621" fill="#18241F" font-family="Arial,sans-serif" font-size="14">An order link for WhatsApp or Instagram</text>
+  <circle cx="881" cy="662" r="12" fill="#E8F2EB"/>
+  <path d="M876 662L880 666L887 658" stroke="#327252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="906" y="667" fill="#18241F" font-family="Arial,sans-serif" font-size="14">Funds locked before the rider leaves</text>
+  <circle cx="881" cy="708" r="12" fill="#E8F2EB"/>
+  <path d="M876 708L880 712L887 704" stroke="#327252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="906" y="713" fill="#18241F" font-family="Arial,sans-serif" font-size="14">Payment sent straight to your wallet</text>
+</svg>

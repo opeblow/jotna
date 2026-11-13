@@ -1,0 +1,26 @@
+{
+  "name": "jotna",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Jotna — pay on delivery without cash. Lightning hold-invoice escrow for social sellers.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:stack": "node scripts/dev-stack.mjs",
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "test": "npm run test:api && npm run test:web",
+    "test:api": "npm --prefix apps/api test",
+    "test:web": "playwright test",
+    "test:e2e": "node scripts/e2e.mjs",
+    "typecheck": "npm --prefix apps/api run typecheck && npm --prefix apps/web run typecheck",
+    "build": "npm --prefix apps/api run build && npm --prefix apps/web run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  }
+}

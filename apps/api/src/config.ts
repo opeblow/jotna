@@ -47,7 +47,7 @@ const schema = z.object({
   DEV_BUYER_LND_MACAROON: z.string().optional(),
 
   WORKER_INLINE: bool(true),
-  TRUST_PROXY: bool(true),
+  TRUST_PROXY: bool(false),
 });
 
 export type Config = z.infer<typeof schema> & { nostrRelays: string[]; isProd: boolean };
@@ -59,6 +59,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid configuration:\n${lines}`);
   }
   const c = parsed.data;
+  if (c.NODE_ENV === "production") {
+    const origin = new URL(c.WEB_ORIGIN);
+    if (origin.protocol !== "https:" || origin.origin !== c.WEB_ORIGIN) {
+      throw new Error("Production requires WEB_ORIGIN to be an HTTPS origin without a path");
+    }
+    if (c.NETWORK === "regtest") {
+      throw new Error("Production cannot use the regtest network");
+    }
+    if (c.ALLOW_PRIVATE_WALLET_HOSTS) {
+      throw new Error("Production cannot allow private wallet hosts");
+    }
+    if (c.ALLOW_SPEND_CAPABLE_WALLETS) {
+      throw new Error("Production cannot allow spend-capable wallets");
+    }
+    if (c.DEV_BUYER_LND_URL || c.DEV_BUYER_LND_MACAROON) {
+      throw new Error("Production cannot enable the development buyer wallet");
+    }
+  }
   if (c.NETWORK === "mainnet" && c.ALLOW_PRIVATE_WALLET_HOSTS) {
     throw new Error("ALLOW_PRIVATE_WALLET_HOSTS must be off on mainnet");
   }

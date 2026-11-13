@@ -10,6 +10,9 @@ import { loggerOptions } from "./lib/logger.js";
 import { startWorker } from "./worker/worker.js";
 
 const mode = process.argv[2] ?? "all"; // all | api | worker
+if (mode !== "all" && mode !== "api" && mode !== "worker") {
+  throw new Error(`Unknown runtime mode "${mode}". Use all, api, or worker.`);
+}
 
 const config = loadConfig();
 const log = pino(loggerOptions(config.LOG_LEVEL));

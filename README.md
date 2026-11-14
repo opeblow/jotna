@@ -26,7 +26,9 @@ Jotna is a buyer-seller escrow flow for informal commerce. It turns cash-on-deli
   - [Dashboard](#dashboard)
   - [Wallet connection](#wallet-connection)
   - [Create order](#create-order)
-  - [Order view](#order-view)
+  - [Seller order view](#seller-order-view)
+  - [Buyer checkout](#buyer-checkout)
+  - [Rider release](#rider-release)
 - [Repository structure](#repository-structure)
 - [Local development](#local-development)
 - [Validation](#validation)
@@ -49,12 +51,13 @@ Jotna is built for markets where WhatsApp and Instagram are the main sales chann
 
 ## Product flow
 
-1. Seller creates an order link.
-2. Buyer pays via a Lightning wallet.
-3. The funds are locked on the seller wallet, not held by Jotna.
-4. Rider delivers the item.
-5. Buyer verifies the parcel and releases payment.
-6. If the buyer does not release before the deadline, the funds return automatically.
+1. Seller creates an order link and shares it with the buyer.
+2. Buyer opens the link, gets a private recovery code on their device, and pays a Lightning invoice.
+3. The payment is locked on the seller's wallet, not held by Jotna.
+4. At delivery, the buyer shows the rider a release QR code. The rider confirms the parcel before releasing payment.
+5. If delivery does not happen before the deadline, the payment returns automatically.
+
+The buyer's 16-character recovery code is generated on their device, not sent by SMS. Checkout stores hashes; the rider's page submits the derived payment preimage only after confirmation.
 
 ## Core architecture
 
@@ -74,7 +77,7 @@ Jotna is built for markets where WhatsApp and Instagram are the main sales chann
 - Postgres
 - LND / Nostr Wallet Connect
 - Zod validation
-- Vitest and production build verification
+- Vitest, Playwright, and production build verification
 
 ## Page gallery
 
@@ -116,11 +119,23 @@ A wallet setup view that explains the payment path and receive-only connection s
 
 A two-column order form with an updating customer-facing ticket preview.
 
-### Order view
+### Seller order view
 
 ![Order view](docs/images/order.svg)
 
 An order detail view with payment progress, the next action, and a clear price breakdown.
+
+### Buyer checkout
+
+![Buyer checkout](docs/images/buyer-order.svg)
+
+The public order page explains the locked-payment flow and gives the buyer a Lightning checkout and a private recovery code.
+
+### Rider release
+
+![Rider release](docs/images/rider-release.svg)
+
+The rider page checks the order and asks for explicit confirmation before releasing the payment.
 
 ## Repository structure
 
@@ -155,7 +170,9 @@ jotna/
 │       ├── dashboard.svg
 │       ├── wallet.svg
 │       ├── create-order.svg
-│       └── order.svg
+│       ├── order.svg
+│       ├── buyer-order.svg
+│       └── rider-release.svg
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
 ├── LICENSE

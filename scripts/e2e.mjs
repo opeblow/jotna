@@ -117,9 +117,12 @@ const again = await api("POST", `/v1/public/orders/${order1.public_id}/checkout`
 check("repeating checkout returns the same invoice", again.body.payment?.bolt11 === co1.body.payment.bolt11);
 const other = buyerSecrets(order1.public_id);
 r = await api("POST", `/v1/public/orders/${order1.public_id}/checkout`, { payment_hash: other.paymentHash, buyer_key_hash: other.buyerKeyHash });
-check("a second device cannot start a competing checkout", r.status === 409 && r.body.error.code === "checkout_in_progress", r.body);
+check("a second device gets its own invoice instead of being shut out", r.status === 200 && r.body.payment.bolt11 !== co1.body.payment.bolt11, r.body);
+const otherInvoice = r.body.payment.bolt11;
 r = await api("GET", `/v1/public/orders/${order1.public_id}`);
-check("the invoice is hidden from other viewers of the link", r.body.payment === null);
+check("the invoice is hidden from other viewers of the link", r.body.payment === null && r.body.is_buyer === false);
+r = await api("POST", `/v1/public/orders/${order1.public_id}/checkout`, { payment_hash: s1.paymentHash, buyer_key_hash: other.buyerKeyHash });
+check("a payment hash cannot be borrowed by another device", r.status === 409 && r.body.error.code === "payment_hash_reused", r.body);
 
 r = await api("POST", `/v1/public/orders/${order1.public_id}/release`, { preimage: s1.preimage });
 check("release before payment is refused", r.status === 409, r.body);
@@ -128,13 +131,30 @@ r = await api("POST", "/v1/dev/pay", { bolt11: co1.body.payment.bolt11 });
 check("the buyer node pays the invoice", r.status === 200, r.body);
 const funded = await waitStatus(order1.public_id, "funded", s1.buyerKey);
 check("the worker detects the locked payment", funded.status === "funded" && funded.deadline_at && funded.can_cancel === true);
+r = await api("GET", `/v1/public/orders/${order1.public_id}`, null, { "x-jotna-buyer": other.buyerKey });
+check("the device that lost the race is not the buyer", r.body.is_buyer === false && r.body.payment === null, r.body);
+// Ask the seller's node directly: the loser's invoice must be cancelled there, not just in our database.
+const invoiceState = async (hashHex) => {
+  const b64 = encodeURIComponent(Buffer.from(hashHex, "hex").toString("base64").replace(/\+/g, "-").replace(/\//g, "_"));
+  const res = await fetch(`${env.SEED_SELLER_LND_URL}/v2/invoices/lookup?payment_hash=${b64}`, { headers: { "Grpc-Metadata-macaroon": env.SEED_SELLER_LND_MACAROON } });
+  return (await res.json()).state;
+};
+let loserState;
+for (let i = 0; i < 20 && loserState !== "CANCELED"; i++) {
+  loserState = await invoiceState(other.paymentHash);
+  if (loserState !== "CANCELED") await sleep(500);
+}
+check("the losing invoice was withdrawn at the seller's node", loserState === "CANCELED" && otherInvoice.startsWith("lnbcrt"), loserState);
+check("the winning payment is still locked at the seller's node", (await invoiceState(s1.paymentHash)) === "ACCEPTED");
+r = await api("POST", `/v1/public/orders/${order1.public_id}/cancel`, { buyer_key: other.buyerKey });
+check("the losing device cannot cancel the winner's payment", r.status === 403, r.body);
 
 r = await api("POST", `/v1/public/orders/${order1.public_id}/release`, { preimage: randomBytes(32).toString("hex") });
 check("a wrong release code is rejected", r.status === 422 && r.body.error.code === "wrong_code", r.body);
 r = await api("POST", `/v1/orders/${order1.id}/dispatch`);
 check("the seller marks the order dispatched", r.status === 200 && r.body.dispatched_at, r.body);
 r = await api("POST", `/v1/public/orders/${order1.public_id}/cancel`, { buyer_key: s1.buyerKey });
-check("the buyer cannot cancel once the rider has left", r.status === 409 && r.body.error.code === "already_dispatched", r.body);
+check("the buyer cannot cancel right after the rider has left", r.status === 409 && r.body.error.code === "already_dispatched" && r.body.error.details.cancel_available_at, r.body);
 
 r = await api("POST", `/v1/public/orders/${order1.public_id}/release`, { preimage: s1.preimage });
 check("the correct code releases the payment", r.status === 200 && r.body.status === "completed", r.body);
@@ -176,8 +196,13 @@ check("seller endpoints require a session", r.status === 401);
 cookie = saved;
 r = await api("POST", `/v1/orders/${order1.id}/cancel`, null, { origin: "https://evil.example" });
 check("cross-site requests are refused", r.status === 403 && r.body.error.code === "bad_origin", r.body);
+r = await api("POST", "/v1/auth/signup", { phone: "+22176" + String(Math.floor(1000000 + Math.random() * 8999999)), pin: "123456", shop_name: "Weak" });
+check("a guessable PIN is refused at sign-up", r.status === 400, r.body);
+cookie = saved;
 
 r = await api("GET", "/v1/stats");
 check("stats reflect the delivered order", r.body.delivered_total === 1 && r.body.delivered_7d_xof === 16500, r.body);
-r = await api("GET", `/v1/public/shops/e2e-boutique`);
+r = await api("GET", "/v1/me");
+r = await api("GET", `/v1/public/shops/${r.body.seller.shop_slug}`);
+check("the public shop page shows deliveries without amounts or order ids", r.status === 200 && r.body.shop.delivered_count === 1 && !JSON.stringify(r.body).includes("total_xof") && !JSON.stringify(r.body).includes(order1.public_id.slice(0, 5)), r.body);
 console.log(`\n${passed} checks passed.`);

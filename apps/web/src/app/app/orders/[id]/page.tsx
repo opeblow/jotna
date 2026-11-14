@@ -7,7 +7,7 @@ import { IconCheck, IconCopy, IconLock, IconMoto, IconReturn, IconWhatsApp } fro
 import { useErrorText, useI18n } from "@/components/i18n";
 import { Button, buttonClass, Notice, Spinner, Stamp, Stars, StatusBadge } from "@/components/ui";
 import { api, ApiError, type SellerOrder } from "@/lib/api";
-import { clock, countdown, dateTime, sats, xof } from "@/lib/format";
+import { clock, countdown, dateTime, orderRef, sats, xof } from "@/lib/format";
 
 const LIVE = ["open", "awaiting_payment", "funded", "settling", "refunding"];
 
@@ -178,6 +178,9 @@ export default function OrderDetailPage() {
             )}
           </div>
           <div className="mt-6 rounded-2xl border-2 border-dashed border-ink/40 bg-card/60 p-4">
+            <p className="font-semibold">{O.funded.riderRef}</p>
+            <p className="mt-1 font-mono text-3xl font-bold tracking-[0.3em]">{orderRef(order.public_id)}</p>
+            <p className="mt-1 mb-4 text-[0.95rem] text-ink-soft">{O.funded.riderRefBody}</p>
             <p className="font-semibold">{O.funded.riderTitle}</p>
             <p className="mt-1 text-[0.95rem] text-ink-soft">{O.funded.riderBody}</p>
           </div>

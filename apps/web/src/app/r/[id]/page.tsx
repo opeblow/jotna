@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LanguageSwitch, useErrorText, useI18n } from "@/components/i18n";
 import { Button, Logo, Notice, Spinner, StatusBadge } from "@/components/ui";
 import { api, ApiError, type PublicOrder } from "@/lib/api";
-import { xof } from "@/lib/format";
+import { orderRef, xof } from "@/lib/format";
 import { deriveSecrets, isValidCode, normalizeCode } from "@/lib/secrets";
 
 export default function RiderReleasePage() {
@@ -18,6 +18,8 @@ export default function RiderReleasePage() {
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // True once this device presented the code, so the screen can say "paid" rather than "already paid".
+  const [released, setReleased] = useState(false);
 
   useEffect(() => {
     setCode(normalizeCode(window.location.hash.slice(1)));
@@ -57,6 +59,7 @@ export default function RiderReleasePage() {
     setError(null);
     try {
       setOrder(await api<PublicOrder>("POST", `/public/orders/${id}/release`, { body: { preimage: secrets.preimage } }));
+      setReleased(true);
     } catch (err) {
       await load();
       setError(err);
@@ -96,6 +99,10 @@ export default function RiderReleasePage() {
                 <StatusBadge status={order.status} label={t.status[order.status]} />
               </div>
               <p className="tabular mt-5 border-t border-line pt-4 text-2xl font-semibold">{xof(order.total_xof)}</p>
+              <div className="mt-4 rounded-2xl border-2 border-ink bg-butter p-4">
+                <p className="text-sm font-semibold">{R.refCheck}</p>
+                <p className="mt-1 font-mono text-3xl font-bold tracking-[0.3em]">{orderRef(order.public_id)}</p>
+              </div>
 
               {error !== null && <div className="mt-5"><Notice tone="error">{errorText(error)}</Notice></div>}
 
@@ -109,6 +116,11 @@ export default function RiderReleasePage() {
                 </>
               ) : order.status === "settling" ? (
                 <div className="mt-6"><Notice>{R.settling}. {R.settlingBody}</Notice></div>
+              ) : order.status === "completed" && released ? (
+                <div className="mt-6 rounded-2xl border-2 border-ink bg-mint p-6 text-center">
+                  <p className="font-display text-5xl font-semibold text-leaf">{R.paid}</p>
+                  <p className="mt-2 text-lg font-semibold">{R.paidBody}</p>
+                </div>
               ) : order.status === "completed" ? (
                 <div className="mt-6"><Notice tone="success">{R.already}</Notice></div>
               ) : order.status === "refunded" || order.status === "refunding" ? (

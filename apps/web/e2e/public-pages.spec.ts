@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PublicOrder } from "../src/lib/api";
 import { deriveSecrets } from "../src/lib/secrets";
@@ -30,6 +31,7 @@ function makeOrder(overrides: Partial<PublicOrder> = {}): PublicOrder {
     payment: null,
     is_buyer: false,
     can_cancel: false,
+    cancel_available_at: null,
     funded_at: null,
     deadline_at: null,
     dispatched_at: null,
@@ -163,8 +165,72 @@ test("rider must confirm before releasing a funded order", async ({ page }) => {
   page.on("dialog", (dialog) => dialog.accept());
 
   await page.goto(`/r/${publicId}#${recoveryCode}`);
+  await expect(page.getByText("K7QM2")).toBeVisible();
   await page.getByRole("button", { name: "Yes, release the payment" }).click();
 
-  await expect(page.getByText("This order is already paid.")).toBeVisible();
+  await expect(page.getByText("You can hand over the parcel.")).toBeVisible();
   expect(submitted?.preimage).toMatch(/^[a-f0-9]{64}$/);
+});
+
+test("a payment that lands at the last second keeps the buyer's original code", async ({ page }) => {
+  // The invoice looks expired, the buyer asks for a new one, but the first payment had just locked.
+  // The device must still hold the first code: it is the only thing that can release that payment.
+  let firstBuyerKeyHash: string | undefined;
+  let checkoutCount = 0;
+  let paid = false;
+  const sha256 = (hex: string) => createHash("sha256").update(Buffer.from(hex, "hex")).digest("hex");
+
+  await page.route(`**/api/v1/public/orders/${publicId}`, async (route) => {
+    if (!paid) return route.fulfill({ json: makeOrder() });
+    const header = route.request().headers()["x-jotna-buyer"];
+    const isBuyer = Boolean(header) && sha256(header!) === firstBuyerKeyHash;
+    await route.fulfill({ json: makeOrder({ status: "funded", amount_sats: 10000, is_buyer: isBuyer }) });
+  });
+  await page.route(`**/api/v1/public/orders/${publicId}/checkout`, async (route) => {
+    checkoutCount += 1;
+    if (checkoutCount === 1) {
+      firstBuyerKeyHash = route.request().postDataJSON().buyer_key_hash;
+      return route.fulfill({ json: invoiceOrder(new Date(Date.now() - 1000).toISOString()) });
+    }
+    paid = true;
+    await route.fulfill({ status: 409, json: { error: { code: "order_not_payable", message: "This order can no longer be paid" } } });
+  });
+
+  await page.goto(`/o/${publicId}`);
+  await page.getByRole("button", { name: "Pay and lock" }).click();
+  await page.getByRole("button", { name: "Get a new code" }).click();
+
+  await expect(page.getByRole("heading", { name: "Payment locked" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Show this to the rider" })).toBeVisible();
+  expect(checkoutCount).toBe(2);
+});
+
+test("buyer can release the payment without the rider's phone", async ({ page }) => {
+  const secrets = deriveSecrets(publicId, recoveryCode);
+  let submitted: { preimage: string } | undefined;
+
+  await page.addInitScript(([key, value]) => window.localStorage.setItem(key!, value!), [`jotna:code:${publicId}`, recoveryCode]);
+  await page.route(`**/api/v1/public/orders/${publicId}`, (route) =>
+    route.fulfill({ json: makeOrder({ status: "funded", amount_sats: 10000, is_buyer: true }) }),
+  );
+  await page.route(`**/api/v1/public/orders/${publicId}/release`, async (route) => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ json: makeOrder({ status: "completed", amount_sats: 10000, is_buyer: true, completed_at: new Date().toISOString() }) });
+  });
+  page.on("dialog", (dialog) => dialog.accept());
+
+  await page.goto(`/o/${publicId}`);
+  await page.getByRole("button", { name: "I have my parcel" }).click();
+
+  await expect(page.getByRole("heading", { name: "Paid. Enjoy your parcel!" })).toBeVisible();
+  expect(submitted?.preimage).toBe(secrets.preimage);
+});
+
+test("a second visitor can still pay while someone else has an unpaid invoice", async ({ page }) => {
+  await page.route(`**/api/v1/public/orders/${publicId}`, (route) =>
+    route.fulfill({ json: makeOrder({ status: "awaiting_payment", is_buyer: false }) }),
+  );
+  await page.goto(`/o/${publicId}`);
+  await expect(page.getByRole("button", { name: "Pay and lock" })).toBeEnabled();
+  await expect(page.getByLabel("Backup code")).toHaveCount(0);
 });

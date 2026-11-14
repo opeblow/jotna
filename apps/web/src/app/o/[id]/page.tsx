@@ -6,7 +6,7 @@ import { LanguageSwitch, useErrorText, useI18n } from "@/components/i18n";
 import { Qr } from "@/components/Qr";
 import { Button, Field, Input, Logo, Notice, Spinner, Stars, StatusBadge } from "@/components/ui";
 import { api, ApiError, type PublicOrder } from "@/lib/api";
-import { countdown, sats, windowLabel, xof } from "@/lib/format";
+import { countdown, orderRef, sats, windowLabel, xof } from "@/lib/format";
 import { deriveSecrets, formatCode, generateCode, isValidCode, loadCode, normalizeCode, saveCode } from "@/lib/secrets";
 
 const LIVE = ["awaiting_payment", "funded", "settling", "refunding"];
@@ -36,6 +36,22 @@ export default function BuyerOrderPage() {
   const secrets = useMemo(() => activeCode ? deriveSecrets(id, activeCode) : null, [activeCode, id]);
   const secretsRef = useRef(secrets);
   secretsRef.current = secrets;
+  // Countdowns use the server's clock: a phone with a wrong time must not show a live invoice as expired.
+  const skewRef = useRef(0);
+
+  const accept = useCallback((next: PublicOrder) => {
+    const serverNow = Date.parse(next.server_time);
+    if (Number.isFinite(serverNow)) skewRef.current = serverNow - Date.now();
+    setOrder(next);
+    return next;
+  }, []);
+
+  const remember = useCallback((buyerCode: string) => {
+    const saved = saveCode(id, buyerCode);
+    setCode(buyerCode);
+    setReadyId(id);
+    setStorageWarning(!saved);
+  }, [id]);
 
   useEffect(() => {
     setCode(loadCode(id));
@@ -53,7 +69,7 @@ export default function BuyerOrderPage() {
         headers: secretsRef.current ? { "x-jotna-buyer": secretsRef.current.buyerKey } : undefined,
         signal,
       });
-      setOrder(current);
+      accept(current);
       setMissing(false);
       setError(null);
       return current;
@@ -62,7 +78,7 @@ export default function BuyerOrderPage() {
       else if ((err as Error).name !== "AbortError") setError(err);
       return null;
     }
-  }, [id]);
+  }, [accept, id]);
 
   useEffect(() => {
     if (readyId !== id) return;
@@ -81,17 +97,21 @@ export default function BuyerOrderPage() {
   }, [live, load]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => setNow(Date.now() + skewRef.current), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
-  async function beginCheckout(rotateCode = false) {
+  async function beginCheckout(rotateCode = false, retried = false) {
     if (!order) return;
-    const buyerCode = activeCode && !rotateCode ? activeCode : generateCode();
-    const saved = saveCode(id, buyerCode);
-    setCode(buyerCode);
-    setReadyId(id);
-    setStorageWarning(!saved);
+    // Every payment attempt needs its own code. If the server does not recognise this device as a
+    // payer, any stored code belongs to an attempt that is already closed, so it is replaced.
+    const fresh = rotateCode || !order.is_buyer || !activeCode;
+    const buyerCode = fresh ? generateCode() : activeCode!;
+    // Replacing the code of an invoice that looks expired is the dangerous case: the payment may
+    // have landed at the last second, and then the old code is the only thing that can release or
+    // cancel it. Keep the old code until the server has accepted the new attempt.
+    const replacingLive = fresh && order.is_buyer && Boolean(activeCode);
+    if (!replacingLive) remember(buyerCode);
     setBusy("checkout");
     setError(null);
     try {
@@ -99,8 +119,29 @@ export default function BuyerOrderPage() {
       const next = await api<PublicOrder>("POST", `/public/orders/${id}/checkout`, {
         body: { payment_hash: buyerSecrets.paymentHash, buyer_key_hash: buyerSecrets.buyerKeyHash },
       });
-      setOrder({ ...next, is_buyer: true });
+      if (replacingLive) remember(buyerCode);
+      accept({ ...next, is_buyer: true });
     } catch (err) {
+      if (err instanceof ApiError && err.code === "payment_hash_reused" && !retried) {
+        setBusy(null);
+        return beginCheckout(true, true);
+      }
+      // The order may have moved on (paid at the last second, cancelled by the seller): show the truth.
+      const current = await load();
+      if (!current || current.status === "open" || current.status === "awaiting_payment") setError(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function releasePayment() {
+    if (!order || !secrets || !window.confirm(B.funded.confirmBody(xof(order.total_xof)))) return;
+    setBusy("release");
+    setError(null);
+    try {
+      accept(await api<PublicOrder>("POST", `/public/orders/${id}/release`, { body: { preimage: secrets.preimage } }));
+    } catch (err) {
+      await load();
       setError(err);
     } finally {
       setBusy(null);
@@ -121,15 +162,12 @@ export default function BuyerOrderPage() {
       const recovered = await api<PublicOrder>("GET", `/public/orders/${id}`, {
         headers: { "x-jotna-buyer": buyerSecrets.buyerKey },
       });
-      if (!recovered.is_buyer && recovered.status !== "open") {
+      if (!recovered.is_buyer) {
         setRecoveryError(B.funded.lost.wrong);
         return;
       }
-      const saved = saveCode(id, buyerCode);
-      setCode(buyerCode);
-      setReadyId(id);
-      setStorageWarning(!saved);
-      setOrder(recovered);
+      remember(buyerCode);
+      accept(recovered);
       setRecoveryCode("");
     } catch (err) {
       setRecoveryError(errorText(err));
@@ -143,7 +181,7 @@ export default function BuyerOrderPage() {
     setBusy("cancel");
     setError(null);
     try {
-      setOrder(await api<PublicOrder>("POST", `/public/orders/${id}/cancel`, {
+      accept(await api<PublicOrder>("POST", `/public/orders/${id}/cancel`, {
         body: { buyer_key: secrets.buyerKey },
       }));
     } catch (err) {
@@ -176,7 +214,7 @@ export default function BuyerOrderPage() {
       const result = await api<PublicOrder>("POST", `/public/orders/${id}/rating`, {
         body: { buyer_key: secrets.buyerKey, stars, review: review.trim() || null },
       });
-      setOrder(result);
+      accept(result);
       setRated(true);
     } catch (err) {
       setError(err);
@@ -219,7 +257,9 @@ export default function BuyerOrderPage() {
   const invoiceTime = order.payment ? countdown(order.payment.expires_at, now) : null;
   const invoiceExpired = Boolean(order.payment && !invoiceTime);
   const buyerOwnsOrder = order.is_buyer;
-  const needsRecovery = !buyerOwnsOrder && order.status !== "open";
+  // Someone else may be paying at the same moment; that never stops this device from paying too.
+  const canPay = order.status === "open" || (order.status === "awaiting_payment" && !buyerOwnsOrder);
+  const needsRecovery = !buyerOwnsOrder && (order.status === "funded" || order.status === "settling");
   const riderUrl = origin && activeCode ? `${origin}/r/${id}#${activeCode}` : "";
 
   return (
@@ -235,7 +275,9 @@ export default function BuyerOrderPage() {
             <div className="min-w-0">
               <p className="eyebrow text-indigo">{B.from} {order.shop.name}</p>
               <h1 className="mt-2 break-words font-display text-3xl font-semibold sm:text-5xl">{order.title}</h1>
-              <p className="mt-2 text-sm text-ink-soft">{B.deliveredCount(order.shop.delivered_count)}</p>
+              <p className="mt-2 text-sm text-ink-soft">
+                {B.deliveredCount(order.shop.delivered_count)} · {t.common.ref} <span className="font-mono font-semibold tracking-wider text-ink">{orderRef(order.public_id)}</span>
+              </p>
             </div>
             <StatusBadge status={order.status} label={t.status[order.status]} />
           </div>
@@ -267,7 +309,7 @@ export default function BuyerOrderPage() {
           />
         )}
 
-        {order.status === "open" && (
+        {canPay && (
           <section className="rounded-[2rem] border-2 border-ink bg-butter p-6 sm:p-8">
             <h2 className="font-display text-2xl font-semibold sm:text-3xl">{B.open.promiseTitle}</h2>
             <ul className="mt-4 space-y-2 text-ink-soft">
@@ -323,7 +365,7 @@ export default function BuyerOrderPage() {
             <p className="mt-2 text-ink-soft">{B.funded.body}</p>
             <p className="mt-4 rounded-xl border border-line bg-card p-3 font-semibold">{order.dispatched_at ? B.funded.dispatched : B.funded.notYet}</p>
             {order.deadline_at && <p className="mt-3 text-sm font-semibold text-indigo-deep">{B.funded.deadline(countdown(order.deadline_at, now) ?? "0s")}</p>}
-            {order.dispatched_at && <Notice tone="warn">{B.funded.cancelBlocked}</Notice>}
+            {order.dispatched_at && !order.can_cancel && <Notice tone="warn">{B.funded.cancelBlocked}</Notice>}
             {activeCode && riderUrl && (
               <div className="mt-6 rounded-2xl border-2 border-ink bg-card p-5 text-center">
                 <h3 className="font-semibold">{B.funded.qrTitle}</h3>
@@ -332,9 +374,17 @@ export default function BuyerOrderPage() {
                 <CodeCard code={activeCode} title={B.funded.codeTitle} body={B.funded.codeBody} warning={storageWarning} onCopy={() => void copy(formatCode(activeCode))} copied={copied} />
               </div>
             )}
+            {secrets && (
+              <div className="mt-5 rounded-2xl border-2 border-dashed border-ink/40 p-4">
+                <p className="text-sm text-ink-soft">{B.funded.selfRelease}</p>
+                <Button className="mt-3 w-full" variant="indigo" onClick={() => void releasePayment()} busy={busy === "release"} disabled={busy !== null}>
+                  {busy === "release" ? B.funded.releasing : B.funded.confirm}
+                </Button>
+              </div>
+            )}
             {order.can_cancel && (
               <div className="mt-5">
-                <Button className="mt-4" variant="danger" onClick={() => void cancelOrder()} busy={busy === "cancel"} disabled={Boolean(order.dispatched_at)}>
+                <Button className="mt-4" variant="danger" onClick={() => void cancelOrder()} busy={busy === "cancel"} disabled={busy !== null}>
                   {B.funded.cancel}
                 </Button>
               </div>

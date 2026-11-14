@@ -25,7 +25,7 @@ SECRETS_KEY=<64 hex characters generated from 32 random bytes>
 NETWORK=mainnet
 ALLOW_PRIVATE_WALLET_HOSTS=false
 ALLOW_SPEND_CAPABLE_WALLETS=false
-TRUST_PROXY=false
+TRUST_PROXY=1
 WORKER_INLINE=true
 ```
 
@@ -39,7 +39,11 @@ Back up this key in the same secure system as the database backups. Losing or ch
 
 `WEB_ORIGIN` must be the exact HTTPS origin, with no path or trailing slash. `NETWORK` must be explicitly set to the same network as connected wallets. Keep `DEV_BUYER_LND_URL` and `DEV_BUYER_LND_MACAROON` unset. Set `ENABLE_LND_CONNECT=true` only when direct LND wallet connections are part of the deployment.
 
-`TRUST_PROXY` defaults to `false`. Keep it false unless the API is reachable only through a trusted proxy that overwrites forwarded headers; setting it to true while clients can reach the API directly allows them to spoof client IPs and bypass IP-based rate limits.
+`TRUST_PROXY` tells the API how many proxies sit in front of it, so rate limits are counted per visitor. In the layout this guide describes, browsers reach the HTTPS ingress, the ingress forwards to the web app, and the web app's `/api` rewrite forwards to the API. The web app passes the ingress's `X-Forwarded-For` header through unchanged and does not add its own, so from the API's side that is one trusted hop: set `TRUST_PROXY=1`. A list of proxy addresses or CIDR ranges is accepted too.
+
+The ingress must set `X-Forwarded-For` itself and must not pass along a value supplied by the client (append or overwrite, both work; most ingresses do one of them by default). Do not expose the web app's port directly: without an ingress there is no trustworthy client address at all.
+
+Both mistakes are costly. Left at `false` (the default) behind the web app, every visitor shares the web server's address, so one busy or hostile visitor uses up limits meant for everyone (sign-up and checkout are the sensitive ones). Set higher than the real number of proxies, or used while clients can reach the API directly, it lets clients forge their address and escape the limits. Keep the API port closed to the internet.
 
 ## Build and run
 

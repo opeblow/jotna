@@ -94,14 +94,34 @@ function lndClient(port, dir) {
   };
 }
 
+/**
+ * On Windows a PostgreSQL started by an earlier run can outlive it, without its pid file, and hold
+ * the port. Stop any PostgreSQL that runs from this project's own binaries (never a system one).
+ */
+function stopStrayPostgres() {
+  if (process.platform !== "win32") return;
+  // Whatever PostgreSQL holds this project's private port is ours; a system PostgreSQL uses 5432.
+  // The listening socket can belong to a postmaster that is already dead while its worker
+  // processes live on, so stop the owner and every postgres.exe that was started by it.
+  const script =
+    `$owners = @(Get-NetTCPConnection -LocalPort ${PORTS.pg} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); ` +
+    `if ($owners.Count -gt 0) { Get-CimInstance Win32_Process -Filter "name='postgres.exe'" | ` +
+    `Where-Object { $owners -contains $_.ProcessId -or $owners -contains $_.ParentProcessId } | ` +
+    `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }`;
+  spawnSync("powershell", ["-NoProfile", "-Command", script], { stdio: "ignore" });
+}
+
 let shuttingDown = false;
 let pg;
 async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("\nStopping the local stack…");
+  // Ask bitcoind to stop by itself first so it writes its latest blocks to disk.
+  await btc("stop").then(() => sleep(1500)).catch(() => {});
   for (const child of children.reverse()) child.kill();
   await pg?.stop().catch(() => {});
+  stopStrayPostgres();
   process.exit(code);
 }
 process.on("SIGINT", () => void shutdown());
@@ -124,6 +144,7 @@ if (existsSync(join(pgDir, "postmaster.pid"))) {
   const pgCtl = join(ROOT, "node_modules/@embedded-postgres", `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`, "native/bin", "pg_ctl" + exe);
   if (existsSync(pgCtl)) spawnSync(pgCtl, ["stop", "-D", pgDir, "-m", "fast", "-w"], { stdio: "ignore" });
 }
+stopStrayPostgres();
 pg = new EmbeddedPostgres({ databaseDir: pgDir, user: "jotna", password: "jotna", port: PORTS.pg, persistent: true, onLog: () => {} });
 if (firstPg) await pg.initialise();
 await pg.start();
@@ -164,17 +185,20 @@ function startLnd(name, restPort, rpcPort, p2pPort) {
 const seller = startLnd("seller", PORTS.sellerRest, 10009, 9735);
 const buyer = startLnd("buyer", PORTS.buyerRest, 10010, 9736);
 // After a restart LND only reports itself synced once it sees a fresh block, so mine while waiting.
+// If bitcoind was killed without flushing, it comes back a few blocks behind what LND remembers
+// ("block height out of range"). Mining larger batches after the first nudges closes that gap.
 let lastNudge = Date.now();
+let nudges = 0;
 const synced = (node) =>
   until("lnd", async () => {
     const info = await node.call("GET", "/v1/getinfo").catch(() => null);
     if (info?.synced_to_chain) return true;
     if (Date.now() - lastNudge > 5000) {
       lastNudge = Date.now();
-      await mine(1);
+      await mine(nudges++ < 2 ? 1 : 200);
     }
     return false;
-  }, 180_000);
+  }, 240_000);
 await Promise.all([synced(seller), synced(buyer)]);
 console.log("✓ LND seller and buyer nodes");
 

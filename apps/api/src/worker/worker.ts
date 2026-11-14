@@ -1,6 +1,5 @@
 import type { AppContext } from "../context.js";
 import { auditFundedOrder, finalizeRefund, finalizeSettlement, refundOrder, syncAttempt } from "../domain/orders.js";
-import { msatToSats } from "../lib/money.js";
 import { buildRating, buildReceipt, publish, sign } from "../nostr/publisher.js";
 
 const TICK_MS = 2000;
@@ -32,7 +31,9 @@ export function startWorker(ctx: AppContext): { stop: () => Promise<void> } {
   /** Watch unpaid invoices: detect locked payments and expire stale checkouts. */
   async function pollPendingPayments() {
     const rows = await ctx.sql<{ id: string }[]>`
-      update payment_attempts set next_check_at = now() + interval '3 seconds'
+      update payment_attempts set next_check_at = now() + case
+          when invoice_expires_at < now() - interval '2 minutes' then interval '30 seconds'
+          else interval '3 seconds' end
       where id in (
         select id from payment_attempts where status = 'pending' and next_check_at <= now()
         order by next_check_at limit ${BATCH} for update skip locked)
@@ -109,7 +110,7 @@ export function startWorker(ctx: AppContext): { stop: () => Promise<void> } {
 
     if (topic === "nostr.receipt" && o.preimage) {
       const event = sign(ctx, buildReceipt({
-        publicId: o.public_id, shopSlug: o.shop_slug, totalXof: o.total_xof, amountSats: msatToSats(o.amount_msat),
+        publicId: o.public_id, shopSlug: o.shop_slug,
         paymentHash: o.payment_hash, preimage: o.preimage, completedAt: o.completed_at,
       }));
       await publish(ctx, event);

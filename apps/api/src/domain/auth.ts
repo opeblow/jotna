@@ -52,7 +52,7 @@ export async function signup(
   }
 }
 
-export async function login(ctx: AppContext, input: { phone: string; pin: string }): Promise<SellerRow> {
+export async function login(ctx: AppContext, input: { phone: string; pin: string; deviceToken?: string }): Promise<SellerRow> {
   const phone = normalizePhone(input.phone, ctx.config.DEFAULT_COUNTRY_CODE);
   const [seller] = await ctx.sql<SellerRow[]>`select * from sellers where phone = ${phone}`;
 
@@ -61,12 +61,31 @@ export async function login(ctx: AppContext, input: { phone: string; pin: string
     await verifyPin(input.pin, await decoyHash);
     throw unauthorized("Wrong phone number or PIN");
   }
-  if (seller.locked_until && seller.locked_until.getTime() > Date.now()) {
+  // A device that has signed in to this account before is exempt from the account lockout, so a
+  // stranger entering wrong PINs cannot lock the owner out of their own phone. It gets its own,
+  // equally strict, budget of wrong PINs instead: a stolen phone is not a way around the limit.
+  const deviceHash = input.deviceToken ? sha256Hex(input.deviceToken) : null;
+  const [device] = deviceHash
+    ? await ctx.sql<{ token_hash: string }[]>`
+        select token_hash from trusted_devices where token_hash = ${deviceHash} and seller_id = ${seller.id}`
+    : [];
+
+  if (!device && seller.locked_until && seller.locked_until.getTime() > Date.now()) {
     throw tooMany("Too many wrong PINs. Try again later.", {
       retry_after_seconds: Math.ceil((seller.locked_until.getTime() - Date.now()) / 1000),
     });
   }
   if (!(await verifyPin(input.pin, seller.pin_hash))) {
+    if (device) {
+      // Two statements on purpose: PostgreSQL will not delete a row that the same statement updated.
+      const [bumped] = await ctx.sql<{ failed_logins: number }[]>`
+        update trusted_devices set failed_logins = failed_logins + 1 where token_hash = ${device.token_hash}
+        returning failed_logins`;
+      if (bumped && bumped.failed_logins >= MAX_FAILED_LOGINS) {
+        await ctx.sql`delete from trusted_devices where token_hash = ${device.token_hash}`;
+      }
+      throw unauthorized("Wrong phone number or PIN");
+    }
     // Counted in the database so the limit holds across instances and restarts.
     await ctx.sql`
       update sellers set
@@ -79,7 +98,32 @@ export async function login(ctx: AppContext, input: { phone: string; pin: string
   if (seller.failed_logins > 0 || seller.locked_until) {
     await ctx.sql`update sellers set failed_logins = 0, locked_until = null where id = ${seller.id}`;
   }
+  if (device) {
+    await ctx.sql`update trusted_devices set failed_logins = 0, last_used_at = now() where token_hash = ${device.token_hash}`;
+  }
   return seller;
+}
+
+const MAX_TRUSTED_DEVICES = 8;
+
+/**
+ * Remember this device after a successful sign-in. Returns a new token to store in a cookie, or
+ * null when the presented token is already registered for this seller.
+ */
+export async function trustDevice(ctx: AppContext, sellerId: string, currentToken: string | undefined): Promise<string | null> {
+  if (currentToken) {
+    const [known] = await ctx.sql`
+      select 1 from trusted_devices where token_hash = ${sha256Hex(currentToken)} and seller_id = ${sellerId}`;
+    if (known) return null;
+  }
+  const token = randomToken();
+  await ctx.sql`insert into trusted_devices (token_hash, seller_id) values (${sha256Hex(token)}, ${sellerId})`;
+  // Keep only the most recently used devices.
+  await ctx.sql`
+    delete from trusted_devices where seller_id = ${sellerId} and token_hash not in (
+      select token_hash from trusted_devices where seller_id = ${sellerId}
+      order by last_used_at desc limit ${MAX_TRUSTED_DEVICES})`;
+  return token;
 }
 
 /** Create a session. Only the SHA-256 of the token is stored, so a database leak cannot be replayed. */

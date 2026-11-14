@@ -10,7 +10,7 @@ import {
   shopSummary,
 } from "../../domain/orders.js";
 import { notFound } from "../../lib/errors.js";
-import { platformNpub } from "../../nostr/publisher.js";
+import { platformNpub, receiptTag } from "../../nostr/publisher.js";
 
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/, "must be 64 lowercase hex characters");
 const publicId = z.string().regex(/^[2-9a-z]{14}$/);
@@ -51,8 +51,8 @@ export async function publicRoutes(app: FastifyInstance) {
   // Each checkout asks the seller's wallet for an invoice, so it is limited more tightly.
   app.post("/public/orders/:publicId/checkout", { config: { rateLimit: { max: 12, timeWindow: "5 minutes" } } }, async (req) => {
     const body = CheckoutBody.parse(req.body);
-    const { order } = await checkout(ctx, idOf(req), body.payment_hash, body.buyer_key_hash);
-    return presentPublicOrder(ctx, order, { includePayment: true });
+    const { order, attempt } = await checkout(ctx, idOf(req), body.payment_hash, body.buyer_key_hash);
+    return presentPublicOrder(ctx, order, { attempt });
   });
 
   // Guessing a 256-bit preimage is hopeless, but there is no reason to let anyone try quickly.
@@ -80,21 +80,22 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!slug.success) throw notFound("Shop");
     const [seller] = await ctx.sql<{ id: string }[]>`select id from sellers where shop_slug = ${slug.data}`;
     if (!seller) throw notFound("Shop");
-    const reviews = await ctx.sql<{ rating: number; review: string | null; rated_at: Date; total_xof: number }[]>`
-      select rating, review, rated_at, total_xof from orders
+    const reviews = await ctx.sql<{ rating: number; review: string | null; rated_at: Date }[]>`
+      select rating, review, rated_at from orders
       where seller_id = ${seller.id} and rating is not null order by rated_at desc limit 20`;
-    const receipts = await ctx.sql<{ public_id: string; completed_at: Date; total_xof: number; receipt_event_id: string | null }[]>`
-      select public_id, completed_at, total_xof, receipt_event_id from orders
+    const receipts = await ctx.sql<{ public_id: string; completed_at: Date; receipt_event_id: string | null }[]>`
+      select public_id, completed_at, receipt_event_id from orders
       where seller_id = ${seller.id} and status = 'completed' order by completed_at desc limit 20`;
     reply.header("Cache-Control", "public, max-age=30");
     return {
       shop: await shopSummary(ctx.sql, seller.id),
-      reviews: reviews.map((r) => ({ stars: r.rating, review: r.review, at: r.rated_at.toISOString(), total_xof: r.total_xof })),
-      // Order ids are shortened: a receipt proves a delivery happened without exposing the order link.
+      // Amounts are left out on purpose: a public page must not publish what a seller takes in.
+      reviews: reviews.map((r) => ({ stars: r.rating, review: r.review, at: r.rated_at.toISOString() })),
+      // The label is a one-way tag: a receipt proves a delivery happened without exposing any part
+      // of the order link or of the reference riders check at the door.
       receipts: receipts.map((r) => ({
-        ref: r.public_id.slice(0, 4),
+        ref: receiptTag(r.public_id).slice(0, 6),
         at: r.completed_at.toISOString(),
-        total_xof: r.total_xof,
         event_id: r.receipt_event_id,
       })),
       nostr_npub: platformNpub(ctx),

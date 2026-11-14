@@ -10,7 +10,7 @@ import {
   sellerCancel,
   type OrderRow,
 } from "../../domain/orders.js";
-import { badRequest, notFound } from "../../lib/errors.js";
+import { AppError, badRequest, notFound } from "../../lib/errors.js";
 
 const uuid = z.string().uuid();
 
@@ -20,7 +20,7 @@ const CreateOrderBody = z.object({
   amount_xof: z.number().int().positive(),
   delivery_fee_xof: z.number().int().min(0).default(0),
   customer_label: z.string().trim().max(60).optional().nullable(),
-  delivery_window_minutes: z.number().int().min(30).max(1200).optional(),
+  delivery_window_minutes: z.number().int().min(30).max(1080).optional(),
   image_id: uuid.optional().nullable(),
 });
 
@@ -49,6 +49,8 @@ const AiBody = z.object({
 
 const IMAGE_TYPES = ["image/webp", "image/jpeg", "image/png"];
 const MAX_IMAGE_BYTES = 400 * 1024;
+/** Photos live in the database for now; a ceiling keeps one account from filling it. */
+const MAX_IMAGES_PER_SELLER = 500;
 
 export async function sellerRoutes(app: FastifyInstance) {
   const { ctx } = app;
@@ -161,6 +163,8 @@ export async function sellerRoutes(app: FastifyInstance) {
         throw badRequest("invalid_image", "Send a JPEG, PNG or WebP photo");
       }
       if (!matchesMagic(mime, body)) throw badRequest("invalid_image", "That file is not a valid photo");
+      const [{ n } = { n: 0 }] = await ctx.sql<{ n: number }[]>`select count(*)::int as n from images where seller_id = ${seller.id}`;
+      if (n >= MAX_IMAGES_PER_SELLER) throw new AppError(429, "rate_limited", "Photo storage is full for this shop");
       const [row] = await ctx.sql<{ id: string }[]>`
         insert into images (seller_id, mime, bytes) values (${seller.id}, ${mime}, ${body}) returning id`;
       return reply.status(201).send({ id: row!.id, url: `/api/v1/images/${row!.id}` });

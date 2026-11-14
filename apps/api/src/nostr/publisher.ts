@@ -2,6 +2,13 @@ import { finalizeEvent, getPublicKey, type EventTemplate, type VerifiedEvent } f
 import { Relay } from "nostr-tools/relay";
 import { npubEncode } from "nostr-tools/nip19";
 import type { AppContext } from "../context.js";
+import { sha256Hex } from "../lib/crypto.js";
+
+/**
+ * Public label for an order. The order id itself is the link that opens the order, so it is never
+ * published; this one-way tag lets a receipt and a rating refer to the same delivery.
+ */
+export const receiptTag = (publicId: string) => sha256Hex("jotna/v1/receipt|" + publicId).slice(0, 16);
 
 /** Addressable application data (NIP-78). One replaceable record per order, keyed by its `d` tag. */
 const KIND_APP_DATA = 30078;
@@ -15,13 +22,11 @@ export function platformNpub(ctx: AppContext): string | null {
 /**
  * A delivery receipt anyone can verify without trusting Jotna's database: it carries the payment
  * hash and the preimage that settled it (sha256(preimage) = hash). It contains no names, phone
- * numbers, addresses or item descriptions.
+ * numbers, addresses, item descriptions or amounts: a seller's takings are nobody else's business.
  */
 export function buildReceipt(input: {
   publicId: string;
   shopSlug: string;
-  totalXof: number;
-  amountSats: number;
   paymentHash: string;
   preimage: string;
   completedAt: Date;
@@ -30,15 +35,13 @@ export function buildReceipt(input: {
     kind: KIND_APP_DATA,
     created_at: Math.floor(input.completedAt.getTime() / 1000),
     tags: [
-      ["d", `jotna:receipt:${input.publicId}`],
+      ["d", `jotna:receipt:${receiptTag(input.publicId)}`],
       ["t", "jotna-receipt"],
       ["shop", input.shopSlug],
-      ["amount", String(input.totalXof), "XOF"],
-      ["amount", String(input.amountSats), "SAT"],
       ["x", input.paymentHash],
       ["preimage", input.preimage],
     ],
-    content: `Delivered and paid: order ${input.publicId} from ${input.shopSlug}.`,
+    content: `Delivered and paid: an order from ${input.shopSlug}.`,
   };
 }
 
@@ -47,7 +50,7 @@ export function buildRating(input: { publicId: string; shopSlug: string; stars: 
     kind: KIND_APP_DATA,
     created_at: Math.floor(input.ratedAt.getTime() / 1000),
     tags: [
-      ["d", `jotna:rating:${input.publicId}`],
+      ["d", `jotna:rating:${receiptTag(input.publicId)}`],
       ["t", "jotna-rating"],
       ["shop", input.shopSlug],
       ["rating", String(input.stars), "5"],

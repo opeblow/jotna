@@ -52,6 +52,7 @@ export interface AttemptRow {
   id: string;
   order_id: string;
   payment_hash: string;
+  buyer_key_hash: string | null;
   preimage: string | null;
   bolt11: string;
   amount_msat: string;
@@ -75,11 +76,14 @@ async function addEvent(db: Db, orderId: string, type: string, actor: Actor, dat
 const lockOrder = async (tx: Tx, orderId: string) =>
   (await tx<OrderRow[]>`select * from orders where id = ${orderId} for update`)[0];
 
-const liveAttempt = async (db: Db, orderId: string) =>
-  (await db<AttemptRow[]>`select * from payment_attempts where order_id = ${orderId} and status in ('pending','held')`)[0];
+const pendingAttempts = async (db: Db, orderId: string) =>
+  db<AttemptRow[]>`select * from payment_attempts where order_id = ${orderId} and status = 'pending' order by created_at`;
 
+/** The attempt that represents the order: the locked or settled one if there is one, else the newest. */
 const latestAttempt = async (db: Db, orderId: string) =>
-  (await db<AttemptRow[]>`select * from payment_attempts where order_id = ${orderId} order by created_at desc limit 1`)[0];
+  (await db<AttemptRow[]>`
+    select * from payment_attempts where order_id = ${orderId}
+    order by (status in ('held','settled')) desc, created_at desc limit 1`)[0];
 
 // ------------------------------------------------------------------------------------------------
 // Seller side
@@ -149,28 +153,27 @@ export async function sellerCancel(ctx: AppContext, sellerId: string, orderId: s
   if (order.status === "funded") return refundOrder(ctx, orderId, "seller_cancelled", "seller");
   if (["cancelled", "refunded", "refunding"].includes(order.status)) return order; // idempotent
   if (order.status === "awaiting_payment") {
-    // The buyer may have paid a moment ago; learn the truth from the wallet before voiding.
-    const attempt = await liveAttempt(ctx.sql, orderId);
-    if (attempt) await syncAttempt(ctx, attempt.id).catch(() => {});
+    // A buyer may have paid a moment ago; learn the truth from the wallet before voiding.
+    for (const attempt of await pendingAttempts(ctx.sql, orderId)) await syncAttempt(ctx, attempt.id).catch(() => {});
   }
   const result = await ctx.sql.begin(async (tx) => {
     const locked = await lockOrder(tx, orderId);
     if (!locked) throw notFound("Order");
-    if (locked.status === "funded") return { order: locked, refund: true, hash: null as string | null };
+    if (locked.status === "funded") return { order: locked, refund: true };
     if (locked.status !== "open" && locked.status !== "awaiting_payment") {
       throw conflict("not_cancellable", "This order can no longer be cancelled", { status: locked.status });
     }
-    const [attempt] = await tx<AttemptRow[]>`
-      update payment_attempts set status = 'cancelled', closed_at = now()
-      where order_id = ${orderId} and status = 'pending' returning *`;
     const [updated] = await tx<OrderRow[]>`
       update orders set status = 'cancelled', close_reason = 'seller_cancelled', closed_at = now(), updated_at = now()
       where id = ${orderId} returning *`;
     await addEvent(tx, orderId, "cancelled", "seller");
-    return { order: updated!, refund: false, hash: attempt?.payment_hash ?? null };
+    return { order: updated!, refund: false };
   });
   if (result.refund) return refundOrder(ctx, orderId, "seller_cancelled", "seller");
-  if (result.hash) await voidInvoice(ctx, order.seller_id, result.hash);
+  // Unpaid invoices are withdrawn at the wallet. Their rows stay "pending" on purpose: the worker
+  // keeps checking each one until the wallet confirms it is gone, and gives the money straight back
+  // if a payment slips in before the withdrawal lands.
+  for (const attempt of await pendingAttempts(ctx.sql, orderId)) await voidInvoice(ctx, order.seller_id, attempt.payment_hash);
   return result.order;
 }
 
@@ -184,8 +187,19 @@ export async function getOrderByPublicId(ctx: AppContext, publicId: string): Pro
   return order;
 }
 
-export const isBuyer = (order: OrderRow, buyerKey: string | undefined | null) =>
-  Boolean(order.buyer_key_hash && isHex64(buyerKey) && safeEqualHex(sha256Hex(Buffer.from(buyerKey, "hex")), order.buyer_key_hash));
+const keyHashOf = (buyerKey: string | undefined | null) =>
+  isHex64(buyerKey) ? sha256Hex(Buffer.from(buyerKey, "hex")) : null;
+
+/** True when `buyerKey` belongs to the device whose payment is locked for this order. */
+export const isBuyer = (order: OrderRow, buyerKey: string | undefined | null) => {
+  const hash = keyHashOf(buyerKey);
+  return Boolean(hash && order.buyer_key_hash && safeEqualHex(hash, order.buyer_key_hash));
+};
+
+/** Unpaid invoices allowed per order at once. Bounds what a stranger with the link can make the wallet do. */
+const MAX_PENDING_ATTEMPTS = 6;
+/** An unpaid invoice older than this may be withdrawn to make room for a new checkout. */
+const EVICTABLE_AFTER_MS = 2 * 60_000;
 
 /**
  * Start (or resume) paying for an order.
@@ -193,6 +207,10 @@ export const isBuyer = (order: OrderRow, buyerKey: string | undefined | null) =>
  * The buyer's device invents a secret, keeps it, and sends only its hash. The seller's wallet issues
  * an invoice locked to that hash, so the money can only be claimed by revealing the secret.
  * Calling again with the same hash returns the same invoice.
+ *
+ * Several devices may check out the same order at once. Each gets its own invoice; the first
+ * payment to lock wins and the rest are withdrawn (see syncAttempt). That is deliberate: if only one
+ * checkout were allowed, anyone who saw the link could open it and shut the real buyer out.
  */
 export async function checkout(
   ctx: AppContext,
@@ -200,24 +218,32 @@ export async function checkout(
   paymentHash: string,
   buyerKeyHash: string,
 ): Promise<{ order: OrderRow; attempt: AttemptRow }> {
-  let order = await getOrderByPublicId(ctx, publicId);
-
-  if (order.status === "awaiting_payment") {
-    const current = await liveAttempt(ctx.sql, order.id);
-    if (current?.payment_hash === paymentHash) return { order, attempt: current };
-    if (current && current.invoice_expires_at.getTime() <= Date.now()) {
-      await syncAttempt(ctx, current.id); // expires it, or discovers it was paid at the last second
-      order = await getOrderByPublicId(ctx, publicId);
-    }
-  }
-  if (order.status === "awaiting_payment") {
-    const current = await liveAttempt(ctx.sql, order.id);
-    throw conflict("checkout_in_progress", "Someone is already paying for this order on another device", {
-      retry_after_seconds: current ? Math.max(1, Math.ceil((current.invoice_expires_at.getTime() - Date.now()) / 1000)) : 60,
-    });
-  }
-  if (order.status !== "open") {
+  const order = await getOrderByPublicId(ctx, publicId);
+  if (order.status !== "open" && order.status !== "awaiting_payment") {
     throw conflict("order_not_payable", "This order can no longer be paid", { status: order.status });
+  }
+
+  // A payment hash identifies exactly one attempt, ever. Refuse a reused hash before asking the
+  // wallet for anything: the hash of someone else's in-flight payment is visible to routing nodes,
+  // and we must never create, or later cancel, an invoice on the strength of a borrowed hash.
+  const [existing] = await ctx.sql<AttemptRow[]>`select * from payment_attempts where payment_hash = ${paymentHash}`;
+  if (existing) {
+    if (existing.order_id === order.id && existing.status === "pending" && existing.buyer_key_hash === buyerKeyHash) {
+      return { order, attempt: existing }; // the same device asking again
+    }
+    throw conflict("payment_hash_reused", "This payment code was already used. Start the payment again.");
+  }
+
+  const pending = await pendingAttempts(ctx.sql, order.id);
+  if (pending.length >= MAX_PENDING_ATTEMPTS) {
+    const oldest = pending[0]!;
+    const age = Date.now() - oldest.created_at.getTime();
+    if (age < EVICTABLE_AFTER_MS) {
+      throw conflict("checkout_in_progress", "Too many payments are open for this order. Try again in a minute.", {
+        retry_after_seconds: Math.ceil((EVICTABLE_AFTER_MS - age) / 1000),
+      });
+    }
+    await evictAttempt(ctx, order.seller_id, oldest);
   }
 
   const rate = await ctx.rates.get();
@@ -247,28 +273,46 @@ export async function checkout(
   try {
     return await ctx.sql.begin(async (tx) => {
       const locked = await lockOrder(tx, order.id);
-      if (!locked || locked.status !== "open") {
+      if (!locked || (locked.status !== "open" && locked.status !== "awaiting_payment")) {
         throw conflict("order_not_payable", "This order can no longer be paid", { status: locked?.status });
       }
-      // The partial unique index on live attempts is the final arbiter of "one payment per order".
       const [attempt] = await tx<AttemptRow[]>`
-        insert into payment_attempts (order_id, payment_hash, bolt11, amount_msat, xof_per_btc, invoice_expires_at)
-        values (${order.id}, ${paymentHash}, ${bolt11}, ${amountMsat.toString()}, ${rate.xofPerBtc},
+        insert into payment_attempts (order_id, payment_hash, buyer_key_hash, bolt11, amount_msat, xof_per_btc, invoice_expires_at)
+        values (${order.id}, ${paymentHash}, ${buyerKeyHash}, ${bolt11}, ${amountMsat.toString()}, ${rate.xofPerBtc},
                 now() + make_interval(secs => ${expirySeconds}))
         returning *`;
+      if (locked.status === "awaiting_payment") return { order: locked, attempt: attempt! };
       const [updated] = await tx<OrderRow[]>`
-        update orders set status = 'awaiting_payment', buyer_key_hash = ${buyerKeyHash}, updated_at = now()
-        where id = ${order.id} returning *`;
+        update orders set status = 'awaiting_payment', updated_at = now() where id = ${order.id} returning *`;
       await addEvent(tx, order.id, "checkout_started", "buyer", { amount_sats: msatToSats(amountMsat) });
       return { order: updated!, attempt: attempt! };
     });
   } catch (err) {
-    await provider.cancel(paymentHash).catch(() => {});
-    if ((err as { code?: string }).code === "23505") {
-      throw conflict("checkout_in_progress", "Someone is already paying for this order on another device");
+    const pg = err as { code?: string; constraint_name?: string };
+    if (pg.code === "23505" && pg.constraint_name === "payment_attempts_payment_hash_key") {
+      // Lost a race with another request using the same hash. The invoice under this hash is that
+      // attempt's invoice now, so it must not be cancelled from here.
+      throw conflict("payment_hash_reused", "This payment code was already used. Start the payment again.");
     }
+    await provider.cancel(paymentHash).catch(() => {});
     throw err;
   }
+}
+
+/** Withdraw the oldest unpaid invoice to make room, unless it turns out to have just been paid. */
+async function evictAttempt(ctx: AppContext, sellerId: string, attempt: AttemptRow): Promise<void> {
+  await syncAttempt(ctx, attempt.id).catch(() => {});
+  const [still] = await ctx.sql`select 1 from payment_attempts where id = ${attempt.id} and status = 'pending'`;
+  if (!still) return;
+  try {
+    const provider = await ctx.wallets.forSeller(sellerId);
+    await provider.cancel(attempt.payment_hash);
+  } catch (err) {
+    if (!(err instanceof WalletError)) throw err;
+    // Only forget an invoice once the wallet has confirmed it can no longer be paid.
+    throw new AppError(502, "wallet_unavailable", "The seller's wallet did not answer. Try again in a moment.");
+  }
+  await ctx.sql`update payment_attempts set status = 'cancelled', closed_at = now() where id = ${attempt.id} and status = 'pending'`;
 }
 
 /**
@@ -283,7 +327,12 @@ export async function syncAttempt(ctx: AppContext, attemptId: string): Promise<v
   const provider = await ctx.wallets.forSeller(attempt.seller_id);
   const invoice = await provider.lookupInvoice(attempt.payment_hash);
 
-  if (invoice.state === "held" || invoice.state === "settled") {
+  if (invoice.state === "settled") {
+    await recordSettledOutside(ctx, attempt.order_id, attempt.id);
+    return;
+  }
+
+  if (invoice.state === "held") {
     const outcome = await ctx.sql.begin(async (tx) => {
       const order = await lockOrder(tx, attempt.order_id);
       const [fresh] = await tx<AttemptRow[]>`select * from payment_attempts where id = ${attemptId} for update`;
@@ -293,13 +342,23 @@ export async function syncAttempt(ctx: AppContext, attemptId: string): Promise<v
       const nodeEnd = invoice.settleDeadline ? invoice.settleDeadline.getTime() - SETTLE_MARGIN_MS : Infinity;
       const deadline = new Date(Math.min(windowEnd, nodeEnd));
       await tx`update payment_attempts set status = 'held', held_at = now() where id = ${attemptId}`;
-      await tx`update orders set status = 'funded', funded_at = now(), deadline_at = ${deadline}, updated_at = now()
-               where id = ${order.id}`;
+      await tx`update orders set status = 'funded', buyer_key_hash = ${fresh.buyer_key_hash}, funded_at = now(),
+               deadline_at = ${deadline}, updated_at = now() where id = ${order.id}`;
       await addEvent(tx, order.id, "funded", "system", { amount_sats: msatToSats(attempt.amount_msat) });
       return "funded" as const;
     });
-    // Money arrived for an order that was cancelled in the meantime: give it straight back.
-    if (outcome === "stray") await provider.cancel(attempt.payment_hash).catch(() => {});
+    if (outcome === "stray") {
+      // Money arrived for an order that was cancelled, or that another device paid first: give it
+      // straight back. The row stays "pending" so the worker retries until the wallet confirms.
+      await provider.cancel(attempt.payment_hash).catch(() => {});
+    }
+    if (outcome === "funded") {
+      // First payment to lock wins. Withdraw every other unpaid invoice for this order; their rows
+      // also stay "pending" until the wallet confirms, so a late payment is caught and returned.
+      for (const loser of await pendingAttempts(ctx.sql, attempt.order_id)) {
+        await provider.cancel(loser.payment_hash).catch(() => {});
+      }
+    }
     return;
   }
 
@@ -312,8 +371,13 @@ export async function syncAttempt(ctx: AppContext, attemptId: string): Promise<v
         update payment_attempts set status = 'expired', closed_at = now()
         where id = ${attemptId} and status = 'pending' returning id`;
       if (!closed || !order || order.status !== "awaiting_payment") return;
-      await tx`update orders set status = 'open', buyer_key_hash = null, updated_at = now() where id = ${order.id}`;
-      await addEvent(tx, order.id, "checkout_expired", "system");
+      // The order is payable again only when no other device still has an unpaid invoice.
+      const [reopened] = await tx`
+        update orders set status = 'open', updated_at = now()
+        where id = ${order.id}
+          and not exists (select 1 from payment_attempts where order_id = ${order.id} and status = 'pending')
+        returning id`;
+      if (reopened) await addEvent(tx, order.id, "checkout_expired", "system");
     });
   }
 }
@@ -375,11 +439,17 @@ export async function buyerCancel(ctx: AppContext, publicId: string, buyerKey: s
   if (!isBuyer(order, buyerKey)) throw forbidden("not_buyer", "Only the device that paid can cancel this order");
   if (order.status === "refunding" || order.status === "refunded") return order;
   if (order.status !== "funded") throw conflict("not_cancellable", "This order cannot be cancelled now", { status: order.status });
-  if (order.dispatched_at) {
-    throw conflict("already_dispatched", "The rider is on the way. Ask the seller to cancel, or refuse the parcel at the door.");
-  }
-  return refundOrder(ctx, order.id, "buyer_cancelled", "buyer", { requireNotDispatched: true });
+  return refundOrder(ctx, order.id, "buyer_cancelled", "buyer", { buyerGraceMs: ctx.config.DISPATCH_GRACE_MINUTES * 60_000 });
 }
+
+/**
+ * When the buyer may cancel a dispatched order. The buyer can always cancel before the rider leaves.
+ * Once the seller says the rider has left, cancelling is paused so a parcel in transit is not
+ * orphaned, but only for a while: a seller cannot hold a buyer's money by clicking "dispatched"
+ * and then never delivering.
+ */
+export const buyerCancelAvailableAt = (order: OrderRow, graceMinutes: number): Date | null =>
+  order.dispatched_at ? new Date(order.dispatched_at.getTime() + graceMinutes * 60_000) : null;
 
 export async function rateOrder(
   ctx: AppContext,
@@ -459,7 +529,7 @@ export async function refundOrder(
   orderId: string,
   reason: "seller_cancelled" | "buyer_cancelled" | "deadline_passed",
   actor: Actor,
-  opts: { requireNotDispatched?: boolean; requireDeadlinePassed?: boolean } = {},
+  opts: { buyerGraceMs?: number; requireDeadlinePassed?: boolean } = {},
 ): Promise<OrderRow> {
   const moved = await ctx.sql.begin(async (tx) => {
     const order = await lockOrder(tx, orderId);
@@ -469,8 +539,13 @@ export async function refundOrder(
       if (actor === "system") return false; // released or closed while we were deciding
       throw conflict("not_refundable", "This order cannot be refunded now", { status: order.status });
     }
-    if (opts.requireNotDispatched && order.dispatched_at) {
-      throw conflict("already_dispatched", "The rider is on the way");
+    if (opts.buyerGraceMs !== undefined && order.dispatched_at) {
+      const availableAt = order.dispatched_at.getTime() + opts.buyerGraceMs;
+      if (Date.now() < availableAt) {
+        throw conflict("already_dispatched", "The rider is on the way. If the parcel is not right, do not show your code.", {
+          cancel_available_at: new Date(availableAt).toISOString(),
+        });
+      }
     }
     if (opts.requireDeadlinePassed && (!order.deadline_at || order.deadline_at.getTime() > Date.now())) return false;
     await tx`update orders set status = 'refunding', close_reason = ${reason}, retry_at = now() + interval '20 seconds',
@@ -496,6 +571,11 @@ export async function finalizeRefund(ctx: AppContext, orderId: string): Promise<
   } catch (err) {
     if (!(err instanceof WalletError)) throw err;
     const state = await provider.lookupInvoice(row.payment_hash).then((i) => i.state).catch(() => null);
+    if (state === "settled") {
+      // The money is already with the seller, so there is nothing left to refund.
+      await recordSettledOutside(ctx, orderId, row.id);
+      return;
+    }
     if (state !== "cancelled") {
       ctx.log.warn({ orderId, err: err.message }, "refund failed, the worker will retry");
       return;
@@ -518,6 +598,17 @@ export async function auditFundedOrder(ctx: AppContext, orderId: string): Promis
   if (!row) return;
   const provider = await ctx.wallets.forSeller(row.seller_id);
   const invoice = await provider.lookupInvoice(row.payment_hash);
+  if (invoice.state === "settled") return recordSettledOutside(ctx, orderId, row.id);
+  if (invoice.state === "held") {
+    // Blocks can arrive faster than expected. If the node's own timeout has moved closer than our
+    // deadline, bring the deadline forward so the refund is ours to announce, not a surprise.
+    if (invoice.settleDeadline) {
+      const nodeEnd = new Date(invoice.settleDeadline.getTime() - SETTLE_MARGIN_MS);
+      await ctx.sql`update orders set deadline_at = ${nodeEnd}, updated_at = now()
+                    where id = ${orderId} and status = 'funded' and deadline_at > ${nodeEnd}`;
+    }
+    return;
+  }
   if (invoice.state !== "cancelled") return;
   await ctx.sql.begin(async (tx) => {
     const order = await lockOrder(tx, orderId);
@@ -527,6 +618,30 @@ export async function auditFundedOrder(ctx: AppContext, orderId: string): Promis
              where id = ${orderId}`;
     await addEvent(tx, orderId, "refunded", "system", { reason: "lock_expired" });
   });
+}
+
+/**
+ * The seller's node reports the invoice as settled although Jotna never asked for it (the node was
+ * operated by hand, or a previous settle call succeeded and its answer was lost). The payment is
+ * final on the Lightning side, so the order is closed as completed. A public receipt is issued
+ * only when the buyer's code was actually presented.
+ */
+async function recordSettledOutside(ctx: AppContext, orderId: string, attemptId: string): Promise<void> {
+  await ctx.sql.begin(async (tx) => {
+    const order = await lockOrder(tx, orderId);
+    if (!order || ["completed", "refunded", "cancelled"].includes(order.status)) return;
+    const [closed] = await tx<AttemptRow[]>`
+      update payment_attempts set status = 'settled', settled_at = now()
+      where id = ${attemptId} and status in ('pending','held') returning *`;
+    if (!closed) return;
+    await tx`update orders set status = 'completed', completed_at = now(), closed_at = now(), close_reason = null,
+             funded_at = coalesce(funded_at, now()), retry_at = null, updated_at = now() where id = ${orderId}`;
+    await addEvent(tx, orderId, "completed", "system", { settled_outside: !closed.preimage });
+    if (closed.preimage && ctx.config.nostrRelays.length > 0) {
+      await tx`insert into outbox (topic, payload) values ('nostr.receipt', ${tx.json({ order_id: orderId })})`;
+    }
+  });
+  ctx.log.warn({ orderId }, "invoice was settled outside the normal release path");
 }
 
 async function voidInvoice(ctx: AppContext, sellerId: string, paymentHash: string) {
@@ -576,13 +691,24 @@ export async function shopSummary(db: Db, sellerId: string): Promise<ShopSummary
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 /** What anyone holding the order link may see. No seller notes, no payment secrets. */
-export async function presentPublicOrder(ctx: AppContext, order: OrderRow, opts: { buyerKey?: string | null; includePayment?: boolean } = {}) {
-  const attempt = await latestAttempt(ctx.sql, order.id);
-  const buyer = isBuyer(order, opts.buyerKey);
-  const showPayment = order.status === "awaiting_payment" && attempt?.status === "pending" && (buyer || opts.includePayment);
+export async function presentPublicOrder(ctx: AppContext, order: OrderRow, opts: { buyerKey?: string | null; attempt?: AttemptRow } = {}) {
+  // Until a payment is locked, every unpaid attempt has its own buyer. Afterwards the order has one.
+  const keyHash = keyHashOf(opts.buyerKey);
+  const mine =
+    opts.attempt ??
+    (keyHash
+      ? (await ctx.sql<AttemptRow[]>`
+          select * from payment_attempts where order_id = ${order.id} and buyer_key_hash = ${keyHash}
+          order by created_at desc limit 1`)[0]
+      : undefined);
+  const decided = order.buyer_key_hash !== null;
+  const attempt = decided ? await latestAttempt(ctx.sql, order.id) : mine;
+  const buyer = decided ? isBuyer(order, opts.buyerKey) : mine?.status === "pending";
+  const showPayment = order.status === "awaiting_payment" && buyer && mine?.status === "pending";
+  const cancelAt = buyerCancelAvailableAt(order, ctx.config.DISPATCH_GRACE_MINUTES);
 
   let quote: { amount_sats: number; xof_per_btc: number; as_of: string } | null = null;
-  if (order.status === "open") {
+  if (order.status === "open" || (order.status === "awaiting_payment" && !buyer)) {
     const rate = await ctx.rates.get().catch(() => null);
     if (rate) {
       quote = {
@@ -607,10 +733,11 @@ export async function presentPublicOrder(ctx: AppContext, order: OrderRow, opts:
     quote,
     amount_sats: attempt && order.status !== "open" ? msatToSats(attempt.amount_msat) : null,
     payment: showPayment
-      ? { bolt11: attempt!.bolt11, amount_sats: msatToSats(attempt!.amount_msat), expires_at: attempt!.invoice_expires_at.toISOString() }
+      ? { bolt11: mine!.bolt11, amount_sats: msatToSats(mine!.amount_msat), expires_at: mine!.invoice_expires_at.toISOString() }
       : null,
     is_buyer: buyer,
-    can_cancel: buyer && order.status === "funded" && !order.dispatched_at,
+    can_cancel: buyer && order.status === "funded" && (!cancelAt || cancelAt.getTime() <= Date.now()),
+    cancel_available_at: order.status === "funded" ? iso(cancelAt) : null,
     funded_at: iso(order.funded_at),
     deadline_at: iso(order.deadline_at),
     dispatched_at: iso(order.dispatched_at),

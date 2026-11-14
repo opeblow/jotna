@@ -20,6 +20,15 @@ describe("runtime configuration", () => {
     expect(loadConfig({ ...required, NODE_ENV: "test" }).TRUST_PROXY).toBe(false);
   });
 
+  it("reads a proxy hop count, a flag or an address list", () => {
+    const trust = (v: string) => loadConfig({ ...required, NODE_ENV: "test", TRUST_PROXY: v }).TRUST_PROXY;
+    expect(trust("2")).toBe(2);
+    expect(trust("true")).toBe(true);
+    expect(trust("0")).toBe(false);
+    expect(trust("10.0.0.0/8, 172.16.0.0/12")).toBe("10.0.0.0/8, 172.16.0.0/12");
+    expect(() => trust("sometimes")).toThrow("TRUST_PROXY");
+  });
+
   it("accepts an explicitly configured production deployment", () => {
     expect(production().isProd).toBe(true);
   });

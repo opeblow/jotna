@@ -41,6 +41,12 @@ export function countdown(untilIso: string, now: number): string | null {
   return `${s}${nbsp}s`;
 }
 
+/**
+ * A short reference the seller gives the rider. The rider compares it with the one on the release
+ * screen, so a customer cannot substitute a look-alike order from a shop they control.
+ */
+export const orderRef = (publicId: string) => publicId.slice(0, 5).toUpperCase();
+
 export function windowLabel(minutes: number): string {
   if (minutes % 60 === 0) return `${minutes / 60}${nbsp}h`;
   if (minutes < 60) return `${minutes}${nbsp}min`;

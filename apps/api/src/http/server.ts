@@ -22,15 +22,22 @@ declare module "fastify" {
 }
 
 export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
+  const hops = ctx.config.TRUST_PROXY;
   const app = Fastify({
     logger: loggerOptions(ctx.config.LOG_LEVEL),
-    trustProxy: ctx.config.TRUST_PROXY,
+    // A hop count is expressed as a function: trust the N addresses nearest to us, no more.
+    trustProxy: typeof hops === "number" ? (_address: string, hop: number) => hop < hops : hops,
     bodyLimit: 64 * 1024,
     // Query strings are not logged: order links are capabilities and must not end up in log files.
     logController: new LogController({ disableRequestLogging: true }),
   });
 
   app.decorate("ctx", ctx);
+  if (ctx.config.isProd && hops === false) {
+    app.log.warn(
+      "TRUST_PROXY is off. If this API sits behind the web app or any proxy, every visitor shares one rate-limit bucket; set TRUST_PROXY to the number of proxies in front of it.",
+    );
+  }
   await app.register(helmet, { contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: "same-site" } });
   await app.register(cookie);
   await app.register(rateLimit, {

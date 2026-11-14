@@ -116,6 +116,7 @@ export interface PublicOrder {
   payment: { bolt11: string; amount_sats: number; expires_at: string } | null;
   is_buyer: boolean;
   can_cancel: boolean;
+  cancel_available_at: string | null;
   funded_at: string | null;
   deadline_at: string | null;
   dispatched_at: string | null;

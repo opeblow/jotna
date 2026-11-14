@@ -13,7 +13,7 @@
     "test": "npm run test:api && npm run test:web",
     "test:api": "npm --prefix apps/api test",
     "test:web": "playwright test",
-    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e": "node scripts/e2e.mjs && node scripts/e2e-auth.mjs",
     "typecheck": "npm --prefix apps/api run typecheck && npm --prefix apps/web run typecheck",
     "build": "npm --prefix apps/api run build && npm --prefix apps/web run build"
   },

@@ -6,6 +6,28 @@ const bool = (def: boolean) =>
     .optional()
     .transform((v) => (v === undefined || v === "" ? def : ["1", "true", "yes", "on"].includes(v.toLowerCase())));
 
+/**
+ * How many reverse proxies sit in front of the API.
+ *   false        – none: the socket address is the client (API exposed directly).
+ *   1, 2, …      – that many trusted hops; the client address is read from X-Forwarded-For
+ *                  counting from the right, so a client cannot spoof it by sending its own header.
+ *   a.b.c.d/nn,… – trust exactly these proxy addresses.
+ * Getting this wrong in either direction breaks IP rate limiting: too low and every user shares
+ * the proxy's bucket (one abuser locks everyone out), too high and clients can forge their address.
+ */
+const trustProxy = z
+  .string()
+  .optional()
+  .transform((v, ctx): boolean | number | string => {
+    const raw = (v ?? "").trim().toLowerCase();
+    if (raw === "" || ["false", "no", "off", "0"].includes(raw)) return false;
+    if (["true", "yes", "on"].includes(raw)) return true;
+    if (/^\d{1,2}$/.test(raw)) return Number(raw);
+    if (/^[0-9a-f.:/,\s]+$/.test(raw)) return raw;
+    ctx.addIssue({ code: "custom", message: "TRUST_PROXY must be false, a hop count, or a list of proxy addresses" });
+    return false;
+  });
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().default("0.0.0.0"),
@@ -25,7 +47,9 @@ const schema = z.object({
   INVOICE_EXPIRY_SECONDS: z.coerce.number().int().min(120).default(900),
   DEFAULT_DELIVERY_WINDOW_MINUTES: z.coerce.number().int().default(720),
   /** Final CLTV delta requested for hold invoices (blocks). Bounds how long funds can stay locked. */
-  HOLD_CLTV_DELTA: z.coerce.number().int().min(40).max(1000).default(144),
+  HOLD_CLTV_DELTA: z.coerce.number().int().min(40).max(1000).default(200),
+  /** After the seller marks an order dispatched, the buyer cannot cancel for this long. */
+  DISPATCH_GRACE_MINUTES: z.coerce.number().int().min(0).max(1080).default(120),
   MIN_ORDER_XOF: z.coerce.number().int().default(200),
   MAX_ORDER_XOF: z.coerce.number().int().default(1_000_000),
 
@@ -47,7 +71,7 @@ const schema = z.object({
   DEV_BUYER_LND_MACAROON: z.string().optional(),
 
   WORKER_INLINE: bool(true),
-  TRUST_PROXY: bool(false),
+  TRUST_PROXY: trustProxy,
 });
 
 export type Config = z.infer<typeof schema> & { nostrRelays: string[]; isProd: boolean };

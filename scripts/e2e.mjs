@@ -81,6 +81,10 @@ async function payAndLock(order) {
 // ---- Account and wallet ------------------------------------------------------------------------
 const phone = "+22177" + String(Math.floor(1000000 + Math.random() * 8999999));
 let r = await api("POST", "/v1/auth/signup", { phone, pin: "739104", shop_name: "E2E Boutique" });
+if (r.body?.error?.code === "code_required") {
+  console.error("Phone verification is on, and this script signs up with made-up numbers. Start the API with PHONE_VERIFICATION=off.");
+  process.exit(1);
+}
 check("signup creates a session", r.status === 201 && cookie.startsWith("jotna_sid="), r.body);
 
 r = await api("POST", "/v1/orders", { title: "No wallet yet", amount_xof: 5000 }, { "idempotency-key": "e2e-nowallet-" + randomBytes(6).toString("hex") });

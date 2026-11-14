@@ -31,6 +31,11 @@ async function uniqueSlug(ctx: AppContext, shopName: string): Promise<string> {
   return `${base}-${Date.now().toString(36)}`;
 }
 
+export async function phoneTaken(ctx: AppContext, phone: string): Promise<boolean> {
+  const [row] = await ctx.sql`select 1 from sellers where phone = ${phone}`;
+  return Boolean(row);
+}
+
 export async function signup(
   ctx: AppContext,
   input: { phone: string; pin: string; shop_name: string; city?: string | null },

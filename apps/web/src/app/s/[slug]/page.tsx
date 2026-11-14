@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { IconCheck } from "@/components/icons";
 import { LanguageSwitch } from "@/components/i18n";
 import { ShellPattern } from "@/components/patterns";
@@ -19,16 +20,15 @@ const API_URL = process.env.API_URL ?? "http://127.0.0.1:4000";
 /** Fetched on the server, so the page arrives complete on a slow connection. */
 async function loadShop(slug: string): Promise<ShopPage | null> {
   if (!/^[a-z0-9-]{2,48}$/.test(slug)) return null;
-  try {
-    const res = await fetch(`${API_URL}/v1/public/shops/${slug}`, { next: { revalidate: 30 } });
-    return res.ok ? ((await res.json()) as ShopPage) : null;
-  } catch {
-    return null;
-  }
+  const res = await fetch(`${API_URL}/v1/public/shops/${slug}`, { next: { revalidate: 30 } });
+  if (res.status === 404) return null;
+  // An outage is not a missing shop: fail the request rather than tell crawlers the shop is gone.
+  if (!res.ok) throw new Error(`Shop lookup failed with status ${res.status}`);
+  return (await res.json()) as ShopPage;
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const data = await loadShop((await params).slug);
+  const data = await loadShop((await params).slug).catch(() => null);
   return { title: data?.shop.name ?? "Jotna" };
 }
 
@@ -37,14 +37,8 @@ export default async function ShopReputationPage({ params }: { params: Promise<{
   const [{ t, locale }, data] = await Promise.all([getDict(), loadShop(slug)]);
   const S = t.shop;
 
-  if (!data) {
-    return (
-      <main className="wrap flex min-h-dvh max-w-xl flex-col items-center justify-center gap-6 py-10 text-center">
-        <Logo />
-        <h1 className="text-4xl font-semibold">{S.notFound}</h1>
-      </main>
-    );
-  }
+  // Rendered by not-found.tsx with a real 404 status.
+  if (!data) notFound();
 
   const { shop, reviews, receipts } = data;
   return (

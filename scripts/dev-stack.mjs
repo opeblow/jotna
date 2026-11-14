@@ -261,6 +261,11 @@ const env = {
   SEED_SELLER_LND_URL: `http://127.0.0.1:${PORTS.sellerRest}`,
   SEED_SELLER_LND_MACAROON: receiveOnly.macaroon,
 };
+// Optional settings this script does not manage: carried over so a restart never drops them.
+for (const key of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_VERIFY_SERVICE_SID", "PHONE_VERIFICATION_CHANNEL", "PHONE_VERIFICATION"]) {
+  const value = keep(key, "");
+  if (value) env[key] = value;
+}
 writeFileSync(envPath, Object.entries(env).map(([k, v]) => `${k}=${v}`).join("\n") + "\n");
 console.log("✓ .env written\n\nThe local stack is running. Leave this window open, then in another terminal:\n  npm run dev\n");
 

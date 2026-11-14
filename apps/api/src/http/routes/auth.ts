@@ -1,9 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { createSession, destroySession, login, signup, trustDevice, type SellerRow } from "../../domain/auth.js";
+import { createSession, destroySession, login, phoneTaken, signup, trustDevice, type SellerRow } from "../../domain/auth.js";
 import { aiEnabled } from "../../domain/ai.js";
 import { shopSummary } from "../../domain/orders.js";
+import { badRequest, conflict } from "../../lib/errors.js";
+import { normalizePhone } from "../../lib/phone.js";
 import { isWeakPin } from "../../lib/pin.js";
+import { createPhoneVerifier } from "../../lib/verify.js";
 import { platformNpub } from "../../nostr/publisher.js";
 import { SESSION_COOKIE } from "../server.js";
 
@@ -11,16 +14,25 @@ const DEVICE_COOKIE = "jotna_dev";
 
 const pin = z.string().regex(/^\d{6}$/, "PIN must be 6 digits");
 
-const SignupBody = z.object({
+const signupFields = {
   phone: z.string().min(6).max(24),
   pin,
   shop_name: z.string().trim().min(2).max(40),
   city: z.string().trim().max(40).optional().nullable(),
-}).refine((b) => !isWeakPin(b.pin, b.phone), { path: ["pin"], message: "Choose a PIN that is harder to guess" });
+};
+const isStrongPin = (b: { pin: string; phone: string }) => !isWeakPin(b.pin, b.phone);
+const weakPin = { path: ["pin"], message: "Choose a PIN that is harder to guess" };
+const SignupBody = z.object({ ...signupFields, code: z.string().regex(/^\d{4,10}$/).optional() }).refine(isStrongPin, weakPin);
+// Asking for a code validates the whole form, so nobody spends a code on a sign-up that would be refused.
+const SignupCodeBody = z.object({ ...signupFields, locale: z.enum(["fr", "en"]).default("fr") }).refine(isStrongPin, weakPin);
 const LoginBody = z.object({ phone: z.string().min(6).max(24), pin });
 
 export async function authRoutes(app: FastifyInstance) {
   const { ctx } = app;
+  const verifier = createPhoneVerifier(ctx.config);
+  if (ctx.config.isProd && !verifier) {
+    app.log.warn("Phone verification is off: anyone can register any phone number. Set the TWILIO_* variables to turn it on.");
+  }
 
   const setSession = async (reply: FastifyReply, seller: SellerRow) => {
     const { token, expiresAt } = await createSession(ctx, seller.id);
@@ -70,8 +82,31 @@ export async function authRoutes(app: FastifyInstance) {
   // Tight per-IP limits on credential endpoints; the per-account lockout lives in the database.
   const authLimit = { config: { rateLimit: { max: 10, timeWindow: "5 minutes" } } };
 
+  const alreadyRegistered = () => conflict("phone_taken", "An account already exists for this number. Sign in instead.");
+
+  // Each code is a paid message to a number the visitor chose, so this is limited harder than the
+  // other credential endpoints. The provider adds its own limit per destination number.
+  const codeLimit = { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } };
+
+  app.post("/auth/signup/code", codeLimit, async (req) => {
+    const body = SignupCodeBody.parse(req.body);
+    const phone = normalizePhone(body.phone, ctx.config.DEFAULT_COUNTRY_CODE);
+    if (!verifier) return { required: false };
+    if (await phoneTaken(ctx, phone)) throw alreadyRegistered();
+    await verifier.send(phone, body.locale);
+    return { required: true, channel: ctx.config.PHONE_VERIFICATION_CHANNEL };
+  });
+
   app.post("/auth/signup", authLimit, async (req, reply) => {
-    const seller = await signup(ctx, SignupBody.parse(req.body));
+    const { code, ...input } = SignupBody.parse(req.body);
+    if (verifier) {
+      const phone = normalizePhone(input.phone, ctx.config.DEFAULT_COUNTRY_CODE);
+      if (!code) throw badRequest("code_required", "Enter the code we sent to your phone");
+      // Checked first: a code can be used once, and it should not be spent on a number that is taken.
+      if (await phoneTaken(ctx, phone)) throw alreadyRegistered();
+      await verifier.check(phone, code);
+    }
+    const seller = await signup(ctx, input);
     await setSession(reply, seller);
     await rememberDevice(req, reply, seller);
     return reply.status(201).send(await present(seller));

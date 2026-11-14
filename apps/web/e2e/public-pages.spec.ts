@@ -234,3 +234,101 @@ test("a second visitor can still pay while someone else has an unpaid invoice", 
   await expect(page.getByRole("button", { name: "Pay and lock" })).toBeEnabled();
   await expect(page.getByLabel("Backup code")).toHaveCount(0);
 });
+
+test("a shop that does not exist answers with a real 404", async ({ page }) => {
+  // Not a valid shop address, so the page never needs the API to know it is missing.
+  const response = await page.goto("/s/x");
+
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Shop not found" })).toBeVisible();
+});
+
+async function fillSignup(page: import("@playwright/test").Page) {
+  await page.goto("/start");
+  await page.getByLabel("Shop name").fill("Atelier Ndeye");
+  await page.getByLabel("Phone number").fill("771234567");
+  await page.getByLabel("6-digit secret code").fill("739104");
+  await page.getByRole("button", { name: "Open my shop" }).click();
+}
+
+test("sign-up proves the phone number with a code before the shop is created", async ({ page }) => {
+  const codeRequests: Record<string, unknown>[] = [];
+  const signups: Record<string, unknown>[] = [];
+
+  await page.route("**/api/v1/auth/signup/code", async (route) => {
+    codeRequests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { required: true, channel: "sms" } });
+  });
+  await page.route("**/api/v1/auth/signup", async (route) => {
+    const body = route.request().postDataJSON();
+    signups.push(body);
+    if (body.code !== "482913") {
+      return route.fulfill({ status: 400, json: { error: { code: "wrong_sms_code", message: "That code is not right" } } });
+    }
+    await route.fulfill({ status: 201, json: {} });
+  });
+  await page.route("**/api/v1/me", (route) =>
+    route.fulfill({ status: 401, json: { error: { code: "unauthorized", message: "Sign in" } } }),
+  );
+
+  await fillSignup(page);
+
+  await expect(page.getByRole("heading", { name: "Check your phone" })).toBeVisible();
+  await expect(page.getByText("We sent a code by SMS to +221 771234567.")).toBeVisible();
+  expect(signups).toHaveLength(0);
+  expect(codeRequests[0]).toEqual({ phone: "771234567", pin: "739104", shop_name: "Atelier Ndeye", city: null, locale: "en" });
+
+  const confirm = page.getByRole("button", { name: "Confirm and open my shop" });
+  await expect(confirm).toBeDisabled();
+  // A new code cannot be requested straight away.
+  await expect(page.getByRole("button", { name: /Send a new code in/ })).toBeDisabled();
+
+  await page.getByLabel("Code received").fill("111111");
+  await confirm.click();
+  await expect(page.getByText("That code is not right. Check the message and try again.")).toBeVisible();
+
+  await page.getByLabel("Code received").fill("482913");
+  await confirm.click();
+  await page.waitForURL(/\/(app\/wallet\?welcome=1|login)$/, { timeout: 60_000 });
+  expect(signups).toHaveLength(2);
+  expect(signups[1]).toEqual({ phone: "771234567", pin: "739104", shop_name: "Atelier Ndeye", city: null, code: "482913" });
+});
+
+test("sign-up lets the seller go back and correct the number", async ({ page }) => {
+  await page.route("**/api/v1/auth/signup/code", (route) => route.fulfill({ json: { required: true, channel: "whatsapp" } }));
+
+  await fillSignup(page);
+  await expect(page.getByText("We sent a code on WhatsApp to +221 771234567.")).toBeVisible();
+  await page.getByRole("button", { name: "Change number" }).click();
+
+  await expect(page.getByLabel("Phone number")).toHaveValue("771234567");
+  await expect(page.getByLabel("Shop name")).toHaveValue("Atelier Ndeye");
+});
+
+test("sign-up reports a number that cannot receive a code and stays on the form", async ({ page }) => {
+  await page.route("**/api/v1/auth/signup/code", (route) =>
+    route.fulfill({ status: 400, json: { error: { code: "phone_unreachable", message: "Cannot send" } } }),
+  );
+
+  await fillSignup(page);
+
+  await expect(page.getByText("We cannot send a code to this number. Check it and try again.")).toBeVisible();
+  await expect(page.getByLabel("Phone number")).toBeVisible();
+});
+
+test("sign-up skips the code step on a server that does not verify numbers", async ({ page }) => {
+  const signups: Record<string, unknown>[] = [];
+  await page.route("**/api/v1/auth/signup/code", (route) => route.fulfill({ json: { required: false } }));
+  await page.route("**/api/v1/auth/signup", async (route) => {
+    signups.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: {} });
+  });
+  await page.route("**/api/v1/me", (route) =>
+    route.fulfill({ status: 401, json: { error: { code: "unauthorized", message: "Sign in" } } }),
+  );
+
+  await fillSignup(page);
+
+  await expect.poll(() => signups).toEqual([{ phone: "771234567", pin: "739104", shop_name: "Atelier Ndeye", city: null }]);
+  await expect(page.getByRole("heading", { name: "Check your phone" })).toHaveCount(0);
+});

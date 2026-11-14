@@ -55,7 +55,7 @@ What an attacker might try, and what stops them. "Jotna" below means the server;
 
 ## Known limits
 
-- **Phone numbers are not verified.** Anyone can register any number and any shop name. Verification needs an SMS or WhatsApp provider.
+- **Phone numbers are verified only when Twilio is configured.** With the `TWILIO_*` variables set, sign-up requires a one-time code sent to the number (Twilio Verify generates and checks it; no code is stored by Jotna). Without them, anyone can register any number. Shop names are never verified, and there is no PIN reset by SMS yet.
 - **Reputation can be self-dealt.** A seller can pay their own orders to add deliveries; it costs only routing fees.
 - **A new device during a lockout must wait.** The trusted-device exemption only helps devices that signed in before.
 - **A lost buyer device and a lost backup code** mean the payment cannot be released; it is refunded at the deadline.

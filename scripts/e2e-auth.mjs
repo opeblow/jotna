@@ -2,7 +2,8 @@
 //
 //   node scripts/e2e-auth.mjs
 //
-// Each scenario uses its own phone number: sign-in attempts are rate limited per visitor and number.
+// These scenarios sign up with made-up numbers, so start the API with PHONE_VERIFICATION=off when
+// Twilio is configured. Each scenario uses its own phone number: sign-in attempts are rate limited per visitor and number.
 
 const API = process.env.API_URL ?? "http://127.0.0.1:4000";
 const ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";

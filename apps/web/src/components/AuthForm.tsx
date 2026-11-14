@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { IconCheck } from "@/components/icons";
 import { LanguageSwitch, useErrorText, useI18n } from "@/components/i18n";
 import { Button, Field, Input, Logo, Mark, Notice } from "@/components/ui";
@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { xof } from "@/lib/format";
 
 export function AuthForm({ mode }: { mode: "start" | "login" }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const errorText = useErrorText();
   const router = useRouter();
   const [shopName, setShopName] = useState("");
@@ -19,16 +19,59 @@ export function AuthForm({ mode }: { mode: "start" | "login" }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sign-up only: once a code has been sent, the form is replaced by the code entry.
+  const [verify, setVerify] = useState<{ channel: "sms" | "whatsapp" } | null>(null);
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [resent, setResent] = useState(false);
   const A = t.auth;
   const isStart = mode === "start";
+  const details = () => ({ phone, pin, shop_name: shopName.trim(), city: city.trim() || null });
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  /** Ask the server to send a code. Returns false when this server does not verify numbers. */
+  async function requestCode(): Promise<boolean> {
+    const res = await api<{ required: boolean; channel?: "sms" | "whatsapp" }>("POST", "/auth/signup/code", {
+      body: { ...details(), locale },
+    });
+    if (!res.required) return false;
+    setVerify({ channel: res.channel ?? "sms" });
+    setResendIn(30);
+    return true;
+  }
+
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    setResent(false);
+    try {
+      await requestCode();
+      setCode("");
+      setResent(true);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setResent(false);
     try {
       if (isStart) {
-        await api("POST", "/auth/signup", { body: { phone, pin, shop_name: shopName.trim(), city: city.trim() || null } });
+        if (!verify && (await requestCode())) {
+          setBusy(false);
+          return;
+        }
+        await api("POST", "/auth/signup", { body: verify ? { ...details(), code } : details() });
         router.replace("/app/wallet?welcome=1");
       } else {
         await api("POST", "/auth/login", { body: { phone, pin } });
@@ -40,7 +83,8 @@ export function AuthForm({ mode }: { mode: "start" | "login" }) {
     }
   }
 
-  const ready = phone.replace(/\D/g, "").length >= 7 && /^\d{6}$/.test(pin) && (!isStart || shopName.trim().length >= 2);
+  const shownPhone = /^(\+|00)/.test(phone.trim()) ? phone.trim() : `+221 ${phone.trim()}`;
+  const ready = verify ? /^\d{4,10}$/.test(code) : phone.replace(/\D/g, "").length >= 7 && /^\d{6}$/.test(pin) && (!isStart || shopName.trim().length >= 2);
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1fr_0.85fr]">
@@ -51,10 +95,31 @@ export function AuthForm({ mode }: { mode: "start" | "login" }) {
         </div>
 
         <main className="mx-auto flex w-full max-w-[26rem] flex-1 flex-col justify-center py-10">
-          <h1 className="text-[2.6rem] font-semibold sm:text-5xl">{isStart ? A.startTitle : A.loginTitle}</h1>
-          <p className="mt-3 text-lg text-ink-soft">{isStart ? A.startSub : A.loginSub}</p>
+          <h1 className="text-[2.6rem] font-semibold sm:text-5xl">{verify ? A.verify.title : isStart ? A.startTitle : A.loginTitle}</h1>
+          <p className="mt-3 text-lg text-ink-soft">
+            {verify ? A.verify.sentTo[verify.channel](shownPhone) : isStart ? A.startSub : A.loginSub}
+          </p>
 
           <form onSubmit={submit} className="mt-8 space-y-5 rounded-[1.75rem] border border-line bg-card p-5 shadow-soft sm:p-7" noValidate>
+            {verify ? (
+              <>
+                <Field label={A.verify.label} hint={A.verify.hint}>
+                  <Input
+                    className="tabular text-center text-2xl font-semibold tracking-[0.5em]"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={10}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="••••••"
+                    autoFocus
+                    required
+                  />
+                </Field>
+                {resent && !error && <Notice tone="success">{A.verify.resent}</Notice>}
+              </>
+            ) : (
+              <>
             {isStart && (
               <>
                 <Field label={A.shopName} hint={A.shopNameHint}>
@@ -94,12 +159,34 @@ export function AuthForm({ mode }: { mode: "start" | "login" }) {
                 required
               />
             </Field>
+              </>
+            )}
 
             {error && <Notice tone="error">{error}</Notice>}
 
             <Button type="submit" size="lg" className="w-full" busy={busy} disabled={!ready}>
-              {isStart ? A.create : A.signIn}
+              {verify ? A.verify.cta : isStart ? A.create : A.signIn}
             </Button>
+
+            {verify && (
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm font-semibold">
+                <button type="button" onClick={resend} disabled={busy || resendIn > 0} className="text-ink underline underline-offset-4 disabled:cursor-not-allowed disabled:text-ink-faint disabled:no-underline">
+                  {resendIn > 0 ? A.verify.resendIn(resendIn) : A.verify.resend}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerify(null);
+                    setCode("");
+                    setError(null);
+                    setResent(false);
+                  }}
+                  className="text-ink-soft underline underline-offset-4 hover:text-ink"
+                >
+                  {A.verify.change}
+                </button>
+              </div>
+            )}
           </form>
 
           <p className="mt-6 text-center text-ink-soft">

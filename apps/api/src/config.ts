@@ -63,6 +63,17 @@ const schema = z.object({
   NOSTR_SECRET_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/).optional().or(z.literal("")),
   NOSTR_RELAYS: z.string().default(""),
 
+  /**
+   * Twilio Verify sends a one-time code to prove a seller owns the phone number they sign up with.
+   * Set all three to turn verification on; leave all three empty and sign-up trusts the number.
+   */
+  TWILIO_ACCOUNT_SID: z.string().regex(/^AC[0-9a-f]{32}$/).optional().or(z.literal("")),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_VERIFY_SERVICE_SID: z.string().regex(/^VA[0-9a-f]{32}$/).optional().or(z.literal("")),
+  PHONE_VERIFICATION_CHANNEL: z.enum(["sms", "whatsapp"]).default("sms"),
+  /** Switch verification off without removing the credentials, e.g. for local end-to-end scripts. */
+  PHONE_VERIFICATION: bool(true),
+
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default("claude-opus-5-5"),
 
@@ -74,7 +85,7 @@ const schema = z.object({
   TRUST_PROXY: trustProxy,
 });
 
-export type Config = z.infer<typeof schema> & { nostrRelays: string[]; isProd: boolean };
+export type Config = z.infer<typeof schema> & { nostrRelays: string[]; isProd: boolean; phoneVerification: boolean };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = schema.safeParse(env);
@@ -107,8 +118,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (c.DEV_BUYER_LND_URL && c.NETWORK !== "regtest") {
     throw new Error("DEV_BUYER_LND_URL is only allowed on regtest");
   }
+  const twilio = [c.TWILIO_ACCOUNT_SID, c.TWILIO_AUTH_TOKEN, c.TWILIO_VERIFY_SERVICE_SID].filter(Boolean).length;
+  if (twilio !== 0 && twilio !== 3) {
+    throw new Error("Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID together, or none of them");
+  }
+  if (c.NODE_ENV === "production" && twilio === 3 && !c.PHONE_VERIFICATION) {
+    throw new Error("Production cannot switch phone verification off while Twilio is configured");
+  }
   return {
     ...c,
+    phoneVerification: twilio === 3 && c.PHONE_VERIFICATION,
     nostrRelays: c.NOSTR_RELAYS.split(",").map((s) => s.trim()).filter(Boolean),
     isProd: c.NODE_ENV === "production",
   };

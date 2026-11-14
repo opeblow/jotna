@@ -393,6 +393,7 @@ export const en: Dict = {
       releasing: "Releasing…",
       codeTitle: "Backup code",
       codeBody: "Write it down. If you switch phones, it lets you find this order again.",
+      storageWarning: "Save this code now; it could not be stored on this device.",
       deadline: (t) => `Automatic refund in ${t} if nothing arrives`,
       dispatched: "The rider is on the way",
       notYet: "The seller is preparing your order",

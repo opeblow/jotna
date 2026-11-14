@@ -391,6 +391,7 @@ export const fr = {
       releasing: "Libération…",
       codeTitle: "Code de secours",
       codeBody: "Notez-le. Si vous changez de téléphone, il permet de retrouver cette commande.",
+      storageWarning: "Enregistrez ce code maintenant : il n'a pas pu être sauvegardé sur cet appareil.",
       deadline: (t: string) => `Remboursement automatique dans ${t} si rien n'arrive`,
       dispatched: "Le livreur est en route",
       notYet: "Le vendeur prépare votre commande",
